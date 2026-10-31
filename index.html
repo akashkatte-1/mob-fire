@@ -1,0 +1,2608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VICE ROYALE VI - Next-Gen Open World Battle Royale</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js r128 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            box-sizing: border-box;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #07090f;
+            font-family: 'Rajdhani', sans-serif;
+            touch-action: none;
+        }
+        .font-display {
+            font-family: 'Black Ops One', cursive;
+        }
+        #game-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            display: block;
+        }
+        /* Next-Gen GTA6 + Free Fire Gradients */
+        .vice-grad {
+            background: linear-gradient(135deg, #ff2a85 0%, #ff7b00 100%);
+        }
+        .ff-orange-grad {
+            background: linear-gradient(135deg, #ff9900 0%, #ff3300 100%);
+        }
+        .ff-blue-grad {
+            background: linear-gradient(135deg, #00e1ff 0%, #0051ff 100%);
+        }
+        .ff-green-grad {
+            background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+        }
+        .tactical-panel {
+            background: rgba(10, 14, 24, 0.76);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+        }
+        .tactical-btn {
+            transition: transform 0.08s ease, filter 0.1s ease, box-shadow 0.15s ease;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55), inset 0 1px 2px rgba(255, 255, 255, 0.4);
+        }
+        .tactical-btn:active, .tactical-btn.active-press {
+            transform: scale(0.90);
+            filter: brightness(1.3);
+        }
+        @keyframes floatDamage {
+            0% { opacity: 1; transform: translate(-50%, 0) scale(0.75); }
+            22% { opacity: 1; transform: translate(-50%, -20px) scale(1.3); }
+            100% { opacity: 0; transform: translate(-50%, -55px) scale(0.95); }
+        }
+        .dmg-popup {
+            position: absolute;
+            pointer-events: none;
+            font-family: 'Black Ops One', cursive;
+            z-index: 30;
+            animation: floatDamage 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            text-shadow: 0 3px 8px rgba(0,0,0,0.95);
+        }
+        #vignette-layer {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 15;
+            box-shadow: inset 0 0 55px rgba(0,0,0,0.45);
+            transition: box-shadow 0.25s ease;
+        }
+        .zone-warning-pulse {
+            animation: zonePulse 1.1s infinite alternate;
+        }
+        @keyframes zonePulse {
+            from { box-shadow: inset 0 0 55px rgba(0, 140, 255, 0.55); }
+            to { box-shadow: inset 0 0 120px rgba(255, 0, 128, 0.85); }
+        }
+        @keyframes hitPop {
+            0% { transform: translate(-50%, -50%) scale(1.6); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(0.85); opacity: 0; }
+        }
+        .hit-anim {
+            animation: hitPop 0.18s ease-out forwards;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 3D PBR WebGL Canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Screen Vignette -->
+    <div id="vignette-layer"></div>
+
+    <!-- Floating Damage Numbers -->
+    <div id="damage-container" class="fixed inset-0 pointer-events-none z-20 overflow-hidden"></div>
+
+    <!-- ==================== IN-GAME HUD ==================== -->
+    <div id="hud-layer" class="fixed inset-0 pointer-events-none z-20 hidden flex-col justify-between p-2 sm:p-4">
+
+        <!-- TOP BAR: GPS Radar, Lighting Switch, Scoreboard -->
+        <div class="flex items-start justify-between w-full">
+            
+            <!-- Left: GTA6-Style GPS Radar Minimap -->
+            <div class="flex flex-col items-start space-y-1.5">
+                <div class="relative tactical-panel rounded-2xl p-1.5 shadow-2xl border-2 border-pink-500/50 pointer-events-auto">
+                    <canvas id="minimap-canvas" width="134" height="134" class="rounded-xl block bg-slate-950"></canvas>
+                    <div class="absolute bottom-2 left-2.5 text-[10px] font-extrabold tracking-wider text-pink-400 bg-black/80 px-1.5 py-0.5 rounded">
+                        VICE BEACH
+                    </div>
+                    <div id="speedometer-badge" class="hidden absolute top-2 right-2 text-[11px] font-display text-cyan-300 bg-black/85 px-2 py-0.5 rounded border border-cyan-400/40">
+                        0 MPH
+                    </div>
+                </div>
+                <!-- Storm Zone Status Pill -->
+                <div class="tactical-panel px-3 py-1 rounded-lg flex items-center space-x-2 border-l-4 border-pink-500">
+                    <span class="w-2.5 h-2.5 rounded-full bg-pink-500 animate-ping"></span>
+                    <span id="zone-timer-text" class="text-xs sm:text-sm font-bold text-white tracking-wider">STORM SHRINKS IN 22s</span>
+                </div>
+            </div>
+
+            <!-- Center: Kill Feed, Vehicle Prompt & Storm Alert -->
+            <div class="flex flex-col items-center space-y-1.5 max-w-[46%]">
+                <div id="outside-zone-alert" class="hidden vice-grad border border-pink-200 text-white px-3.5 py-1 rounded-full text-xs sm:text-sm font-extrabold tracking-widest uppercase shadow-lg animate-bounce">
+                    ⚡ OUTSIDE SAFE ZONE! ENTER VICE CORE ⚡
+                </div>
+                <!-- Interactive Vehicle Enter/Exit Prompt -->
+                <button id="btn-vehicle-prompt" class="hidden pointer-events-auto tactical-btn vice-grad text-white font-display text-xs sm:text-sm tracking-wider px-4 py-2 rounded-full border-2 border-white shadow-2xl items-center space-x-2 animate-pulse">
+                    <span>🏎️</span>
+                    <span id="vehicle-prompt-text">DRIVE SUPERCAR (F)</span>
+                </button>
+                <div id="kill-feed" class="flex flex-col items-center space-y-1 w-full"></div>
+            </div>
+
+            <!-- Right: ALIVE, KILLS, Time of Day & Audio -->
+            <div class="flex flex-col items-end space-y-2">
+                <div class="flex items-center space-x-1.5 sm:space-x-2">
+                    <!-- Time of Day / Atmosphere Switcher -->
+                    <button id="btn-tod-toggle" class="pointer-events-auto tactical-panel tactical-btn px-2.5 h-10 rounded-lg flex items-center space-x-1 text-xs font-extrabold text-amber-300 border border-amber-400/40">
+                        <span id="tod-icon">🌅</span>
+                        <span id="tod-label" class="hidden sm:inline">SUNSET</span>
+                    </button>
+
+                    <!-- Scoreboard -->
+                    <div class="tactical-panel rounded-xl px-3 py-1.5 flex items-center space-x-3 border-t-2 border-pink-500 shadow-lg">
+                        <div class="text-right">
+                            <div class="text-[10px] text-slate-400 font-bold tracking-widest uppercase leading-none">ALIVE</div>
+                            <div id="alive-count" class="text-xl sm:text-2xl font-display text-amber-400 leading-tight">20</div>
+                        </div>
+                        <div class="h-7 w-[1px] bg-white/15"></div>
+                        <div class="text-right">
+                            <div class="text-[10px] text-slate-400 font-bold tracking-widest uppercase leading-none">KILLS</div>
+                            <div id="kill-count" class="text-xl sm:text-2xl font-display text-pink-500 leading-tight">0</div>
+                        </div>
+                    </div>
+
+                    <!-- Mute Toggle -->
+                    <button id="btn-audio-toggle" class="pointer-events-auto tactical-panel tactical-btn w-10 h-10 rounded-lg flex items-center justify-center text-amber-400 border border-white/15">
+                        <svg id="svg-sound-on" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/>
+                        </svg>
+                        <svg id="svg-sound-off" class="w-5 h-5 hidden text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Desktop Controls Pill -->
+                <div class="hidden lg:flex tactical-panel px-2.5 py-1 rounded text-[11px] text-slate-300 space-x-2">
+                    <span><b class="text-pink-400">WASD</b> Move/Drive</span>
+                    <span>•</span>
+                    <span><b class="text-amber-400">Right-Click/V</b> Scope ADS</span>
+                    <span>•</span>
+                    <span><b class="text-cyan-400">F</b> Enter/Exit Car</span>
+                    <span>•</span>
+                    <span><b class="text-cyan-400">G</b> Gloo Wall</span>
+                    <span>•</span>
+                    <span><b class="text-emerald-400">Space</b> Jump/Drift</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- DYNAMIC CROSSHAIR / ADS SCOPE RETICLE -->
+        <div id="crosshair-wrapper" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex items-center justify-center">
+            <div id="reticle-ring" class="w-8 h-8 rounded-full border-2 border-white/85 flex items-center justify-center transition-all duration-100">
+                <div class="w-1.5 h-1.5 bg-pink-500 rounded-full shadow"></div>
+            </div>
+            <div class="absolute w-3 h-[2px] bg-white/80 -left-4"></div>
+            <div class="absolute w-3 h-[2px] bg-white/80 -right-4"></div>
+            <div class="absolute h-3 w-[2px] bg-white/80 -top-4"></div>
+            <div class="absolute h-3 w-[2px] bg-white/80 -bottom-4"></div>
+            <!-- Hit Marker -->
+            <div id="hit-marker" class="opacity-0 fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 pointer-events-none">
+                <svg viewBox="0 0 24 24" class="w-full h-full stroke-red-500" stroke-width="3">
+                    <line x1="3" y1="3" x2="9" y2="9" />
+                    <line x1="21" y1="3" x2="15" y2="9" />
+                    <line x1="3" y1="21" x2="9" y2="15" />
+                    <line x1="21" y1="21" x2="15" y2="15" />
+                </svg>
+            </div>
+        </div>
+
+        <!-- BOTTOM CONTROLS & STATUS BAR -->
+        <div class="relative w-full flex items-end justify-between pb-1 sm:pb-2">
+            
+            <!-- LEFT TOUCH ZONE: 360 Analog Joystick -->
+            <div class="flex flex-col items-start space-y-2">
+                <div id="joystick-zone" class="pointer-events-auto relative w-32 h-32 sm:w-36 sm:h-36 ml-2 mb-1 rounded-full bg-slate-950/55 border-2 border-white/25 backdrop-blur-sm flex items-center justify-center shadow-inner">
+                    <div class="absolute top-1.5 text-amber-400/60 text-[10px] font-bold">SPRINT ▲</div>
+                    <div class="absolute bottom-2 text-white/30 text-xs">▼</div>
+                    <div class="absolute left-2 text-white/30 text-xs">◀</div>
+                    <div class="absolute right-2 text-white/30 text-xs">▶</div>
+                    <div id="joystick-knob" class="w-14 h-14 rounded-full vice-grad border-2 border-white shadow-xl flex items-center justify-center pointer-events-none">
+                        <div class="w-5 h-5 rounded-full bg-white/40"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CENTER-BOTTOM: Health, Armor & Weapon Deck -->
+            <div class="flex flex-col items-center space-y-2 w-56 sm:w-80 mx-auto">
+                <div id="loot-toast" class="opacity-0 transition-opacity duration-300 vice-grad text-white font-extrabold text-xs px-3.5 py-1 rounded-full shadow-lg border border-white/30">
+                    + PICKED UP LOOT
+                </div>
+
+                <!-- Weapon & Reload Box -->
+                <div class="flex items-center space-x-2 w-full">
+                    <div id="btn-reload" class="pointer-events-auto tactical-panel tactical-btn flex-1 px-3 py-1.5 rounded-xl border border-pink-500/40 flex items-center justify-between cursor-pointer">
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-7 h-5 text-pink-400" viewBox="0 0 64 24" fill="currentColor">
+                                <path d="M2 10h42l6-4h12v4H52l-3 4v6h-5v-6H28l-3 5h-5l2-5H10l-4 4H2v-8z"/>
+                            </svg>
+                            <div>
+                                <div id="weapon-name" class="text-xs font-extrabold text-amber-300 tracking-wider leading-none">M4A1 - VICE OPS</div>
+                                <div class="text-[10px] text-slate-400 font-bold">TAP TO RELOAD</div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span id="ammo-clip" class="text-lg sm:text-xl font-display text-white">30</span>
+                            <span class="text-xs text-slate-400 font-bold">/<span id="ammo-reserve">150</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Armor & HP Bars -->
+                <div class="w-full tactical-panel p-2 rounded-xl space-y-1.5">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-[11px] font-extrabold text-cyan-400 w-8">VEST</span>
+                        <div class="flex-1 h-2.5 bg-slate-900 rounded-full overflow-hidden border border-cyan-500/30">
+                            <div id="shield-bar" class="h-full ff-blue-grad transition-all duration-150" style="width: 75%;"></div>
+                        </div>
+                        <span id="shield-val" class="text-xs font-bold text-cyan-300 w-8 text-right">75</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-[11px] font-extrabold text-emerald-400 w-8">HP</span>
+                        <div class="flex-1 h-3.5 bg-slate-900 rounded-full overflow-hidden border border-emerald-500/30">
+                            <div id="hp-bar" class="h-full ff-green-grad transition-all duration-150" style="width: 100%;"></div>
+                        </div>
+                        <span id="hp-val" class="text-xs font-bold text-white w-8 text-right">200</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT TOUCH ZONE: Next-Gen Action Cluster (Fire, ADS Scope, Gloo Wall, Medkit, Dash/Drift) -->
+            <div class="relative w-48 h-48 sm:w-56 sm:h-52 mr-1 mb-1 pointer-events-none">
+                
+                <!-- MEDKIT BUTTON -->
+                <button id="btn-medkit" class="pointer-events-auto tactical-btn absolute top-1 left-0 w-13 h-13 sm:w-14 sm:h-14 p-2 rounded-2xl ff-green-grad border-2 border-emerald-200 flex flex-col items-center justify-center text-white">
+                    <span class="text-sm font-extrabold leading-none">✚</span>
+                    <span class="text-[9px] font-extrabold">HEAL</span>
+                    <span id="medkit-count" class="absolute -top-1.5 -right-1.5 bg-slate-950 text-emerald-300 border border-emerald-400 rounded-full w-5 h-5 text-xs font-extrabold flex items-center justify-center">2</span>
+                </button>
+
+                <!-- ADS / SCOPE ZOOM BUTTON -->
+                <button id="btn-ads" class="pointer-events-auto tactical-btn absolute top-1 left-16 sm:left-18 w-13 h-13 sm:w-14 sm:h-14 p-2 rounded-full bg-slate-900/90 border-2 border-pink-400 flex flex-col items-center justify-center text-pink-300">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="8"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/>
+                    </svg>
+                    <span class="text-[9px] font-black">SCOPE</span>
+                </button>
+
+                <!-- GLOO WALL DEPLOY BUTTON -->
+                <button id="btn-gloo" class="pointer-events-auto tactical-btn absolute bottom-2 left-0 w-16 h-16 rounded-2xl ff-blue-grad border-2 border-cyan-200 flex flex-col items-center justify-center text-white">
+                    <svg class="w-6 h-6 mb-0.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    <span class="text-[9px] font-extrabold tracking-tight leading-none">GLOO WALL</span>
+                    <span id="gloo-count" class="absolute -top-1.5 -right-1.5 bg-slate-950 text-cyan-300 border border-cyan-400 rounded-full w-6 h-6 text-xs font-extrabold flex items-center justify-center">3</span>
+                </button>
+
+                <!-- JUMP / SLIDE / HANDBRAKE DRIFT BUTTON -->
+                <button id="btn-jump" class="pointer-events-auto tactical-btn absolute top-1 right-1 w-14 h-14 rounded-full bg-amber-500 border-2 border-amber-200 flex flex-col items-center justify-center text-slate-950 font-extrabold">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                    <span id="jump-btn-label" class="text-[9px] font-black tracking-wider">JUMP</span>
+                </button>
+
+                <!-- GIANT FIRE / NITRO BUTTON -->
+                <button id="btn-fire" class="pointer-events-auto tactical-btn absolute bottom-2 right-1 w-24 h-24 sm:w-26 sm:h-26 rounded-full ff-orange-grad border-4 border-amber-200 flex flex-col items-center justify-center text-white shadow-2xl">
+                    <svg class="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="7"/>
+                        <line x1="12" y1="2" x2="12" y2="6"/>
+                        <line x1="12" y1="18" x2="12" y2="22"/>
+                        <line x1="2" y1="12" x2="6" y2="12"/>
+                        <line x1="18" y1="12" x2="22" y2="12"/>
+                    </svg>
+                    <span id="fire-btn-label" class="text-xs font-display tracking-widest">FIRE</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT-HALF INVISIBLE AIM TOUCH PAD -->
+    <div id="aim-touch-zone" class="fixed top-0 right-0 w-3/5 h-full z-10 hidden"></div>
+
+    <!-- ==================== LOBBY MODAL ==================== -->
+    <div id="lobby-modal" class="fixed inset-0 z-40 flex items-center justify-center p-4 bg-gradient-to-b from-slate-950/80 via-slate-900/70 to-pink-950/80 backdrop-blur-md">
+        <div class="max-w-lg w-full tactical-panel rounded-3xl p-6 sm:p-8 border-2 border-pink-500/60 shadow-2xl text-center relative overflow-hidden">
+            <div class="inline-block vice-grad text-white text-xs font-extrabold tracking-widest px-3.5 py-1 rounded-full mb-2 shadow">
+                NEXT-GEN OPEN WORLD • GTA VI × FREE FIRE
+            </div>
+            <h1 class="text-4xl sm:text-5xl font-display text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-amber-300 to-cyan-400 drop-shadow">
+                VICE ROYALE VI
+            </h1>
+            <p class="text-slate-200 text-sm sm:text-base mt-1 mb-5 font-semibold">
+                Explore photorealistic <span class="text-pink-400 font-bold">Vice Beach</span>, drive high-speed <span class="text-amber-300 font-bold">Neon Supercars</span>, deploy <span class="text-cyan-400 font-bold">Gloo Walls</span>, and claim the #1 Booyah!
+            </p>
+
+            <div class="grid grid-cols-2 gap-2.5 text-left mb-6">
+                <div class="bg-slate-900/85 p-3 rounded-xl border border-pink-500/30">
+                    <div class="text-pink-400 font-extrabold text-xs uppercase">🏎️ Drive & Drift Cars</div>
+                    <div class="text-slate-300 text-xs mt-0.5">Walk up to any parked Vice Supercar and tap <b>DRIVE (F)</b> to drift & run over rivals!</div>
+                </div>
+                <div class="bg-slate-900/85 p-3 rounded-xl border border-amber-500/30">
+                    <div class="text-amber-400 font-extrabold text-xs uppercase">🏃 Realistic Locomotion</div>
+                    <div class="text-slate-300 text-xs mt-0.5">Articulated IK character sprinting, over-the-shoulder ADS scope zoom & recoil physics.</div>
+                </div>
+                <div class="bg-slate-900/85 p-3 rounded-xl border border-cyan-500/30">
+                    <div class="text-cyan-400 font-extrabold text-xs uppercase">🌅 Dynamic Lighting</div>
+                    <div class="text-slate-300 text-xs mt-0.5">Switch between Golden Sunset, Vice Neon Night & High Noon PBR shaders live!</div>
+                </div>
+                <div class="bg-slate-900/85 p-3 rounded-xl border border-emerald-500/30">
+                    <div class="text-emerald-400 font-extrabold text-xs uppercase">🛡️ Gloo Wall & Loot</div>
+                    <div class="text-slate-300 text-xs mt-0.5">Instant ballistic Gloo shields, tracer rounds, headshots & shrinking Storm Zone.</div>
+                </div>
+            </div>
+
+            <button id="btn-start-match" class="tactical-btn w-full py-4 rounded-2xl vice-grad text-white font-display text-2xl tracking-wider border-2 border-pink-200 shadow-2xl cursor-pointer">
+                ENTER VICE BEACH ▶
+            </button>
+        </div>
+    </div>
+
+    <!-- ==================== GAMEOVER / BOOYAH MODAL ==================== -->
+    <div id="gameover-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+        <div class="max-w-md w-full tactical-panel rounded-3xl p-6 sm:p-8 border-2 border-pink-400 shadow-2xl text-center">
+            <div id="result-badge" class="inline-block px-4 py-1 rounded-full text-xs font-black tracking-widest uppercase mb-2 vice-grad text-white">
+                MATCH FINISHED
+            </div>
+            <h2 id="result-title" class="text-5xl sm:text-6xl font-display text-amber-400 tracking-wider drop-shadow-lg">
+                BOOYAH!
+            </h2>
+            <p id="result-subtitle" class="text-slate-300 font-bold text-base mt-1 mb-6">
+                KING OF VICE BEACH BATTLEGROUNDS!
+            </p>
+
+            <div class="grid grid-cols-3 gap-2 mb-6 bg-slate-900/90 p-3.5 rounded-2xl border border-white/10">
+                <div>
+                    <div class="text-[10px] text-slate-400 font-bold uppercase">RANK</div>
+                    <div id="stat-rank" class="text-2xl font-display text-amber-400">#1/20</div>
+                </div>
+                <div class="border-x border-white/10">
+                    <div class="text-[10px] text-slate-400 font-bold uppercase">ELIMINATIONS</div>
+                    <div id="stat-kills" class="text-2xl font-display text-pink-500">0</div>
+                </div>
+                <div>
+                    <div class="text-[10px] text-slate-400 font-bold uppercase">DAMAGE</div>
+                    <div id="stat-damage" class="text-2xl font-display text-cyan-400">0</div>
+                </div>
+            </div>
+
+            <button id="btn-play-again" class="tactical-btn w-full py-4 rounded-2xl vice-grad text-white font-display text-xl tracking-wider border-2 border-white shadow-xl cursor-pointer">
+                DROP AGAIN ↻
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /********************************************************************
+         * 1. WEB AUDIO SYNTHESIZER (Gunshots, Engine Rev, Drift, Booyah)
+         ********************************************************************/
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+            playShoot(isPlayer = true) {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const bufferSize = this.ctx.sampleRate * 0.1;
+                    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                    const data = buffer.getChannelData(0);
+                    for (let i = 0; i < bufferSize; i++) {
+                        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.28));
+                    }
+                    const noise = this.ctx.createBufferSource();
+                    noise.buffer = buffer;
+
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'bandpass';
+                    filter.frequency.setValueAtTime(isPlayer ? 1200 : 800, now);
+
+                    const gain = this.ctx.createGain();
+                    gain.gain.setValueAtTime(isPlayer ? 0.35 : 0.12, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.095);
+
+                    noise.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    noise.start(now);
+
+                    // Sub bass thump
+                    const osc = this.ctx.createOscillator();
+                    const oscGain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(isPlayer ? 160 : 120, now);
+                    osc.frequency.exponentialRampToValueAtTime(38, now + 0.08);
+                    oscGain.gain.setValueAtTime(isPlayer ? 0.28 : 0.09, now);
+                    oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                    osc.connect(oscGain);
+                    oscGain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.08);
+                } catch (e) {}
+            }
+            playEnginePurr(speedRatio) {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(55 + Math.abs(speedRatio) * 145, now);
+                    gain.gain.setValueAtTime(0.04, now);
+                    gain.gain.exponentialRampToValueAtTime(0.005, now + 0.09);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.09);
+                } catch (e) {}
+            }
+            playHit(isHeadshot = false) {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(isHeadshot ? 1850 : 1020, now);
+                    osc.frequency.exponentialRampToValueAtTime(isHeadshot ? 2400 : 540, now + 0.07);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.07);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.07);
+                } catch (e) {}
+            }
+            playGlooWall() {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(260, now);
+                    osc.frequency.exponentialRampToValueAtTime(920, now + 0.18);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.2);
+                } catch (e) {}
+            }
+            playPickup() {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(523.25, now);
+                    osc.frequency.setValueAtTime(698.46, now + 0.07);
+                    gain.gain.setValueAtTime(0.22, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.18);
+                } catch (e) {}
+            }
+            playBooyah(victory = true) {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const notes = victory ? [440, 554.37, 659.25, 880] : [330, 293.66, 261.63, 196];
+                    notes.forEach((freq, idx) => {
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.13);
+                        gain.gain.setValueAtTime(0.26, now + idx * 0.13);
+                        gain.gain.exponentialRampToValueAtTime(0.008, now + idx * 0.13 + 0.35);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(now + idx * 0.13);
+                        osc.stop(now + idx * 0.13 + 0.35);
+                    });
+                } catch (e) {}
+            }
+        }
+
+        const sfx = new SoundFX();
+
+        /********************************************************************
+         * 2. PROCEDURAL PBR TEXTURE GENERATOR (Skyscrapers, Asphalt, Sand)
+         ********************************************************************/
+        const Textures = {
+            createAsphaltTexture() {
+                const c = document.createElement('canvas');
+                c.width = 512; c.height = 512;
+                const ctx = c.getContext('2d');
+                ctx.fillStyle = '#1c2026';
+                ctx.fillRect(0, 0, 512, 512);
+                // Asphalt grain noise
+                for (let i = 0; i < 9000; i++) {
+                    ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.06)';
+                    ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
+                }
+                // Double Yellow Center Lines
+                ctx.fillStyle = '#f59e0b';
+                ctx.fillRect(246, 0, 6, 512);
+                ctx.fillRect(260, 0, 6, 512);
+                // White dashed lane dividers
+                ctx.fillStyle = '#e2e8f0';
+                for (let y = 0; y < 512; y += 64) {
+                    ctx.fillRect(124, y + 10, 5, 36);
+                    ctx.fillRect(384, y + 10, 5, 36);
+                }
+                const tex = new THREE.CanvasTexture(c);
+                tex.wrapS = THREE.RepeatWrapping;
+                tex.wrapT = THREE.RepeatWrapping;
+                tex.repeat.set(1, 22);
+                return tex;
+            },
+            createBuildingFacade(accentHex = '#ff2a85') {
+                const c = document.createElement('canvas');
+                c.width = 256; c.height = 512;
+                const ctx = c.getContext('2d');
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(0, 0, 256, 512);
+
+                const rows = 16, cols = 6;
+                const padX = 8, padY = 8;
+                const winW = (256 - padX * (cols + 1)) / cols;
+                const winH = (512 - padY * (rows + 1)) / rows;
+
+                for (let r = 0; r < rows; r++) {
+                    for (let col = 0; col < cols; col++) {
+                        const rand = Math.random();
+                        if (rand > 0.62) {
+                            ctx.fillStyle = rand > 0.88 ? accentHex : '#fef08a';
+                        } else if (rand > 0.35) {
+                            ctx.fillStyle = '#38bdf8';
+                        } else {
+                            ctx.fillStyle = '#1e293b';
+                        }
+                        ctx.fillRect(
+                            padX + col * (winW + padX),
+                            padY + r * (winH + padY),
+                            winW,
+                            winH
+                        );
+                    }
+                }
+                const tex = new THREE.CanvasTexture(c);
+                tex.wrapS = THREE.RepeatWrapping;
+                tex.wrapT = THREE.RepeatWrapping;
+                return tex;
+            }
+        };
+
+        /********************************************************************
+         * 3. GLOBAL GAME STATE & CONFIGURATION
+         ********************************************************************/
+        const ISLAND_RADIUS = 195;
+        const TOTAL_BOTS = 19;
+        const BOT_NAMES = [
+            "Lucia_VI", "Jason_Vice", "Alok_Miami", "ChronoGT", "KellyTurbo",
+            "Hayato_V6", "SkylerNeon", "MocoCyber", "WukongKing", "TatsuyaDrift",
+            "SoniaChrome", "OrionV8", "DimitriBoss", "Kla_Striker", "RafaelSnip",
+            "JotaRush", "DashaVice", "MaximFuel", "K_Master"
+        ];
+
+        let scene, camera, renderer, clock;
+        let hemiLight, sunLight, oceanMesh, skyDome;
+        let gameActive = false;
+        let todMode = 0; // 0 = Sunset Golden Hour, 1 = Vice Neon Night, 2 = High Noon
+
+        let obstacles = [];
+        let lootCrates = [];
+        let bots = [];
+        let vehicles = [];
+        let bulletTracers = [];
+        let smokeParticles = [];
+        let radarBlips = [];
+        let muzzleLight = null;
+
+        const safeZone = {
+            mesh: null,
+            radius: 185,
+            targetRadius: 185,
+            minRadius: 20,
+            shrinkTimer: 22,
+            phase: 1,
+            shrinking: false
+        };
+
+        const player = {
+            group: null,
+            limbs: null,
+            muzzlePoint: null,
+            x: 0,
+            y: 0,
+            z: 18,
+            vx: 0,
+            vz: 0,
+            vy: 0,
+            yaw: 0,
+            pitch: 0.10,
+            hp: 200,
+            maxHp: 200,
+            shield: 75,
+            maxShield: 100,
+            ammoClip: 30,
+            maxClip: 30,
+            ammoReserve: 150,
+            medkits: 2,
+            glooWalls: 3,
+            kills: 0,
+            totalDamage: 0,
+            fireCooldown: 0,
+            dashCooldown: 0,
+            dashBoostTimer: 0,
+            isReloading: false,
+            isADS: false,
+            inVehicle: null,
+            nearVehicle: null,
+            walkCycle: 0,
+            recoilKick: 0,
+            alive: true
+        };
+
+        const input = {
+            joyX: 0,
+            joyY: 0,
+            keys: {},
+            isFiring: false,
+            mouseDragging: false,
+            lastMouseX: 0,
+            lastMouseY: 0,
+            aimTouchId: null,
+            lastTouchX: 0,
+            lastTouchY: 0,
+            joyTouchId: null,
+            joyOriginX: 0,
+            joyOriginY: 0
+        };
+
+        /********************************************************************
+         * 4. THREE.JS PBR SCENE & VICE BEACH ENVIRONMENT
+         ********************************************************************/
+        function initThreeScene() {
+            const canvas = document.getElementById('game-canvas');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xfd7f5c);
+            scene.fog = new THREE.FogExp2(0xfd7f5c, 0.0034);
+
+            camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 520);
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.15;
+
+            clock = new THREE.Clock();
+
+            // Realistic Hemisphere + Sunset Directional Lighting
+            hemiLight = new THREE.HemisphereLight(0xffb480, 0x28354a, 0.78);
+            scene.add(hemiLight);
+
+            sunLight = new THREE.DirectionalLight(0xffaa55, 1.35);
+            sunLight.position.set(110, 95, -120);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 10;
+            sunLight.shadow.camera.far = 380;
+            const d = 155;
+            sunLight.shadow.camera.left = -d;
+            sunLight.shadow.camera.right = d;
+            sunLight.shadow.camera.top = d;
+            sunLight.shadow.camera.bottom = -d;
+            scene.add(sunLight);
+
+            // Dynamic Muzzle Flash PointLight
+            muzzleLight = new THREE.PointLight(0xffaa00, 0, 12);
+            scene.add(muzzleLight);
+
+            // Glowing Sunset Orb on Horizon
+            const sunOrb = new THREE.Mesh(
+                new THREE.SphereGeometry(26, 24, 24),
+                new THREE.MeshBasicMaterial({ color: 0xffcc66, fog: false })
+            );
+            sunOrb.position.set(190, 62, -260);
+            scene.add(sunOrb);
+
+            // Specular Animated Ocean Water
+            const oceanGeo = new THREE.PlaneGeometry(1100, 1100, 48, 48);
+            const oceanMat = new THREE.MeshStandardMaterial({
+                color: 0x094e7a,
+                roughness: 0.15,
+                metalness: 0.65
+            });
+            oceanMesh = new THREE.Mesh(oceanGeo, oceanMat);
+            oceanMesh.rotation.x = -Math.PI / 2;
+            oceanMesh.position.y = -1.15;
+            scene.add(oceanMesh);
+
+            // Golden Vice Beach Sand Coastline
+            const beachGeo = new THREE.CylinderGeometry(ISLAND_RADIUS + 18, ISLAND_RADIUS + 26, 2.3, 64);
+            const beachMat = new THREE.MeshStandardMaterial({ color: 0xebd197, roughness: 0.88 });
+            const beach = new THREE.Mesh(beachGeo, beachMat);
+            beach.position.y = -1.05;
+            beach.receiveShadow = true;
+            scene.add(beach);
+
+            // Main Vice Island Turf & Urban Ground
+            const islandGeo = new THREE.CylinderGeometry(ISLAND_RADIUS, ISLAND_RADIUS + 6, 2.4, 64);
+            const islandMat = new THREE.MeshStandardMaterial({ color: 0x3b6e38, roughness: 0.82 });
+            const island = new THREE.Mesh(islandGeo, islandMat);
+            island.position.y = -1.12;
+            island.receiveShadow = true;
+            scene.add(island);
+
+            // Realistic Procedural Asphalt Boulevards & Sidewalks
+            const roadTex = Textures.createAsphaltTexture();
+            const roadMat = new THREE.MeshStandardMaterial({ map: roadTex, roughness: 0.55, metalness: 0.15 });
+            const sidewalkMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.75 });
+
+            // North-South Ocean Drive Boulevard
+            const mainRoadNS = new THREE.Mesh(new THREE.BoxGeometry(16, 0.14, ISLAND_RADIUS * 1.82), roadMat);
+            mainRoadNS.position.y = 0.03;
+            mainRoadNS.receiveShadow = true;
+            scene.add(mainRoadNS);
+
+            const sw1 = new THREE.Mesh(new THREE.BoxGeometry(20, 0.22, ISLAND_RADIUS * 1.82), sidewalkMat);
+            sw1.position.y = 0.01;
+            sw1.receiveShadow = true;
+            scene.add(sw1);
+
+            // East-West Vice Strip Boulevard
+            const mainRoadEW = new THREE.Mesh(new THREE.BoxGeometry(ISLAND_RADIUS * 1.82, 0.15, 16), roadMat);
+            mainRoadEW.rotation.y = Math.PI / 2;
+            mainRoadEW.position.y = 0.04;
+            mainRoadEW.receiveShadow = true;
+            scene.add(mainRoadEW);
+
+            // Safe Zone Electromagnetic Barrier
+            const zoneGeo = new THREE.CylinderGeometry(1, 1, 65, 64, 1, true);
+            const zoneMat = new THREE.MeshBasicMaterial({
+                color: 0xff007f,
+                transparent: true,
+                opacity: 0.22,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            safeZone.mesh = new THREE.Mesh(zoneGeo, zoneMat);
+            safeZone.mesh.position.y = 32;
+            safeZone.mesh.scale.set(safeZone.radius, 1, safeZone.radius);
+            scene.add(safeZone.mesh);
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function toggleTimeOfDay() {
+            todMode = (todMode + 1) % 3;
+            const icon = document.getElementById('tod-icon');
+            const label = document.getElementById('tod-label');
+
+            if (todMode === 0) {
+                // Sunset Golden Hour (GTA 6 Trailer Vibe)
+                scene.background.setHex(0xfd7f5c);
+                scene.fog.color.setHex(0xfd7f5c);
+                hemiLight.color.setHex(0xffb480);
+                hemiLight.groundColor.setHex(0x28354a);
+                sunLight.color.setHex(0xffaa55);
+                sunLight.intensity = 1.35;
+                renderer.toneMappingExposure = 1.15;
+                icon.innerText = '🌅';
+                label.innerText = 'SUNSET';
+            } else if (todMode === 1) {
+                // Vice Neon Night
+                scene.background.setHex(0x090d1c);
+                scene.fog.color.setHex(0x090d1c);
+                hemiLight.color.setHex(0x3b82f6);
+                hemiLight.groundColor.setHex(0x0f172a);
+                sunLight.color.setHex(0x818cf8);
+                sunLight.intensity = 0.65;
+                renderer.toneMappingExposure = 0.95;
+                icon.innerText = '🌃';
+                label.innerText = 'NEON NIGHT';
+            } else {
+                // Tropical High Noon
+                scene.background.setHex(0x38bdf8);
+                scene.fog.color.setHex(0x7dd3fc);
+                hemiLight.color.setHex(0xffffff);
+                hemiLight.groundColor.setHex(0x334155);
+                sunLight.color.setHex(0xfffbeb);
+                sunLight.intensity = 1.45;
+                renderer.toneMappingExposure = 1.2;
+                icon.innerText = '☀️';
+                label.innerText = 'HIGH NOON';
+            }
+        }
+
+        function onWindowResize() {
+            if (!camera || !renderer) return;
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        /********************************************************************
+         * 5. ARTICULATED 3D HUMANOID CHARACTER & SUPERCAR BUILDER
+         ********************************************************************/
+        function createArticulatedCharacter(outfitColor = 0xff2a85, isPlayer = false) {
+            const root = new THREE.Group();
+
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xe0ac69, roughness: 0.6 });
+            const pantsMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7 });
+            const topMat = new THREE.MeshStandardMaterial({ color: outfitColor, roughness: 0.5 });
+            const vestMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4, metalness: 0.3 });
+            const shoeMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.5 });
+
+            // Pivots for procedural IK-like leg & arm animation
+            const leftLegPivot = new THREE.Group();
+            leftLegPivot.position.set(-0.24, 0.95, 0);
+            const leftLegMesh = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.85, 0.34), pantsMat);
+            leftLegMesh.position.y = -0.42;
+            leftLegMesh.castShadow = true;
+            const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.2, 0.48), shoeMat);
+            leftShoe.position.set(0, -0.82, -0.06);
+            leftLegPivot.add(leftLegMesh, leftShoe);
+
+            const rightLegPivot = new THREE.Group();
+            rightLegPivot.position.set(0.24, 0.95, 0);
+            const rightLegMesh = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.85, 0.34), pantsMat);
+            rightLegMesh.position.y = -0.42;
+            rightLegMesh.castShadow = true;
+            const rightShoe = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.2, 0.48), shoeMat);
+            rightShoe.position.set(0, -0.82, -0.06);
+            rightLegPivot.add(rightLegMesh, rightShoe);
+
+            // Torso & Ballistic Armor Vest
+            const torso = new THREE.Mesh(new THREE.BoxGeometry(0.92, 1.12, 0.50), topMat);
+            torso.position.y = 1.48;
+            torso.castShadow = true;
+
+            const vest = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.78, 0.56), vestMat);
+            vest.position.y = 1.52;
+            vest.castShadow = true;
+
+            // Backpack
+            const pack = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.75, 0.32), vestMat);
+            pack.position.set(0, 1.52, 0.38);
+
+            // Head, Sunglasses Visor & Tactical Helmet/Hair
+            const headGroup = new THREE.Group();
+            headGroup.position.y = 2.38;
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.60, 0.58), skinMat);
+            head.castShadow = true;
+            // Vice Sunglasses
+            const shades = new THREE.Mesh(
+                new THREE.BoxGeometry(0.60, 0.16, 0.12),
+                new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.9, roughness: 0.1 })
+            );
+            shades.position.set(0, 0.05, -0.28);
+            // Helmet / Cap
+            const helm = new THREE.Mesh(
+                new THREE.BoxGeometry(0.64, 0.32, 0.64),
+                new THREE.MeshStandardMaterial({ color: isPlayer ? 0xf59e0b : 0x334155, roughness: 0.4 })
+            );
+            helm.position.y = 0.22;
+            headGroup.add(head, shades, helm);
+
+            // Arms & Assault Rifle
+            const rightArmPivot = new THREE.Group();
+            rightArmPivot.position.set(0.60, 1.90, 0);
+            const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.78, 0.28), skinMat);
+            rightArm.position.set(0, -0.32, -0.22);
+            rightArm.rotation.x = Math.PI / 2.6;
+            rightArmPivot.add(rightArm);
+
+            const leftArmPivot = new THREE.Group();
+            leftArmPivot.position.set(-0.60, 1.90, 0);
+            const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.78, 0.28), skinMat);
+            leftArm.position.set(0.18, -0.32, -0.26);
+            leftArm.rotation.x = Math.PI / 2.6;
+            leftArm.rotation.z = -0.3;
+            leftArmPivot.add(leftArm);
+
+            // M4A1 Tactical Carbine
+            const gunGroup = new THREE.Group();
+            const receiver = new THREE.Mesh(
+                new THREE.BoxGeometry(0.14, 0.22, 1.15),
+                new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.8, roughness: 0.3 })
+            );
+            const barrel = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.04, 0.04, 0.65, 8),
+                new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.9, roughness: 0.2 })
+            );
+            barrel.rotation.x = Math.PI / 2;
+            barrel.position.set(0, 0.04, -0.75);
+            const scopeMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(0.12, 0.12, 0.34),
+                new THREE.MeshStandardMaterial({ color: 0xff2a85, metalness: 0.6 })
+            );
+            scopeMesh.position.set(0, 0.16, -0.1);
+            gunGroup.add(receiver, barrel, scopeMesh);
+            gunGroup.position.set(0.48, 1.56, -0.52);
+
+            const muzzle = new THREE.Object3D();
+            muzzle.position.set(0.48, 1.60, -1.35);
+
+            root.add(leftLegPivot, rightLegPivot, torso, vest, pack, headGroup, rightArmPivot, leftArmPivot, gunGroup, muzzle);
+
+            return {
+                group: root,
+                muzzle,
+                limbs: { leftLegPivot, rightLegPivot, leftArmPivot, rightArmPivot, torso, headGroup }
+            };
+        }
+
+        // GTA 6 Style Drivable Vice Supercar with Neon Underglow
+        function createSupercar(x, z, yaw, paintHex = 0xff0055, neonHex = 0x00f0ff) {
+            const carGroup = new THREE.Group();
+
+            // Glossy Metallic Body Chassis
+            const bodyMat = new THREE.MeshStandardMaterial({
+                color: paintHex,
+                metalness: 0.78,
+                roughness: 0.18
+            });
+            const glassMat = new THREE.MeshStandardMaterial({
+                color: 0x0f172a,
+                metalness: 0.95,
+                roughness: 0.08
+            });
+            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.7 });
+            const rimMat = new THREE.MeshStandardMaterial({ color: neonHex, emissive: neonHex, emissiveIntensity: 0.6 });
+
+            const chassis = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.85, 5.6), bodyMat);
+            chassis.position.y = 0.72;
+            chassis.castShadow = true;
+            chassis.receiveShadow = true;
+
+            // Aerodynamic Cabin
+            const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.72, 2.7), glassMat);
+            cabin.position.set(0, 1.42, -0.15);
+            cabin.castShadow = true;
+
+            // Rear Racing Spoiler
+            const spoilerWing = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 0.55), bodyMat);
+            spoilerWing.position.set(0, 1.45, 2.45);
+            const strutL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.4, 0.3), glassMat);
+            strutL.position.set(-0.9, 1.25, 2.45);
+            const strutR = strutL.clone();
+            strutR.position.x = 0.9;
+
+            // LED Headlights & Neon Tailbar
+            const headlightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const hlLeft = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.18, 0.1), headlightMat);
+            hlLeft.position.set(-0.9, 0.82, -2.81);
+            const hlRight = hlLeft.clone();
+            hlRight.position.x = 0.9;
+
+            const tailMat = new THREE.MeshBasicMaterial({ color: 0xff0033 });
+            const tailBar = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.16, 0.1), tailMat);
+            tailBar.position.set(0, 0.88, 2.81);
+
+            // Neon Underglow Plane
+            const underglow = new THREE.Mesh(
+                new THREE.PlaneGeometry(2.9, 5.4),
+                new THREE.MeshBasicMaterial({ color: neonHex, transparent: true, opacity: 0.42, side: THREE.DoubleSide })
+            );
+            underglow.rotation.x = -Math.PI / 2;
+            underglow.position.y = 0.08;
+
+            // 4 Wheels
+            const wheels = [];
+            const wheelPositions = [
+                [-1.38, 0.48, -1.75], [1.38, 0.48, -1.75],
+                [-1.38, 0.48, 1.75],  [1.38, 0.48, 1.75]
+            ];
+            wheelPositions.forEach(pos => {
+                const wGroup = new THREE.Group();
+                const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.38, 16), wheelMat);
+                tire.rotation.z = Math.PI / 2;
+                const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.40, 10), rimMat);
+                rim.rotation.z = Math.PI / 2;
+                wGroup.add(tire, rim);
+                wGroup.position.set(pos[0], pos[1], pos[2]);
+                carGroup.add(wGroup);
+                wheels.push(wGroup);
+            });
+
+            carGroup.add(chassis, cabin, spoilerWing, strutL, strutR, hlLeft, hlRight, tailBar, underglow);
+            carGroup.position.set(x, 0, z);
+            carGroup.rotation.y = yaw;
+            scene.add(carGroup);
+
+            const carObj = {
+                mesh: carGroup,
+                wheels,
+                x,
+                z,
+                yaw,
+                speed: 0,
+                maxSpeed: 36,
+                steering: 0,
+                radius: 2.8
+            };
+            vehicles.push(carObj);
+            return carObj;
+        }
+
+        /********************************************************************
+         * 6. POPULATE VICE BEACH METROPOLIS, PALM TREES, CARS & BOTS
+         ********************************************************************/
+        function clearArenaObjects() {
+            obstacles.forEach(o => scene.remove(o.mesh));
+            obstacles = [];
+            lootCrates.forEach(l => scene.remove(l.mesh));
+            lootCrates = [];
+            bots.forEach(b => scene.remove(b.group));
+            bots = [];
+            vehicles.forEach(v => scene.remove(v.mesh));
+            vehicles = [];
+            bulletTracers.forEach(t => scene.remove(t.line));
+            bulletTracers = [];
+            smokeParticles.forEach(p => scene.remove(p.mesh));
+            smokeParticles = [];
+            if (player.group) scene.remove(player.group);
+        }
+
+        function populateIslandArena() {
+            clearArenaObjects();
+
+            // 1. Create Player
+            const pChar = createArticulatedCharacter(0xff2a85, true);
+            player.group = pChar.group;
+            player.muzzlePoint = pChar.muzzle;
+            player.limbs = pChar.limbs;
+            player.x = 0;
+            player.y = 0;
+            player.z = 16;
+            player.vx = 0;
+            player.vz = 0;
+            player.yaw = 0;
+            player.pitch = 0.10;
+            player.inVehicle = null;
+            player.group.position.set(player.x, player.y, player.z);
+            scene.add(player.group);
+
+            // 2. Spawn Vice City Glass Skyscrapers & Art Deco Hotels
+            const towerSpecs = [
+                { x: -34, z: -32, w: 15, d: 15, h: 28, neon: '#ff2a85' },
+                { x: 36, z: -34, w: 16, d: 14, h: 34, neon: '#00f0ff' },
+                { x: -38, z: 36, w: 14, d: 16, h: 24, neon: '#f59e0b' },
+                { x: 36, z: 38, w: 15, d: 15, h: 30, neon: '#a855f7' },
+                { x: -28, z: -85, w: 18, d: 14, h: 36, neon: '#ec4899' },
+                { x: 32, z: -88, w: 16, d: 16, h: 32, neon: '#06b6d4' },
+                { x: -85, z: -28, w: 15, d: 15, h: 26, neon: '#f43f5e' },
+                { x: 86, z: -26, w: 16, d: 16, h: 29, neon: '#3b82f6' },
+                { x: -82, z: 32, w: 14, d: 16, h: 22, neon: '#10b981' },
+                { x: 84, z: 34, w: 16, d: 14, h: 27, neon: '#eab308' },
+                { x: 28, z: 88, w: 16, d: 14, h: 25, neon: '#ff2a85' },
+                { x: -30, z: 88, w: 15, d: 15, h: 24, neon: '#00f0ff' }
+            ];
+
+            towerSpecs.forEach(b => {
+                const bGroup = new THREE.Group();
+                const facadeTex = Textures.createBuildingFacade(b.neon);
+                const bodyMat = new THREE.MeshStandardMaterial({
+                    map: facadeTex,
+                    roughness: 0.25,
+                    metalness: 0.55
+                });
+                const body = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), bodyMat);
+                body.position.y = b.h / 2;
+                body.castShadow = true;
+                body.receiveShadow = true;
+
+                // Glowing Neon Roof Crown
+                const crown = new THREE.Mesh(
+                    new THREE.BoxGeometry(b.w + 0.6, 0.9, b.d + 0.6),
+                    new THREE.MeshBasicMaterial({ color: b.neon })
+                );
+                crown.position.y = b.h + 0.45;
+
+                bGroup.add(body, crown);
+                bGroup.position.set(b.x, 0, b.z);
+                scene.add(bGroup);
+
+                obstacles.push({
+                    mesh: bGroup,
+                    x: b.x,
+                    z: b.z,
+                    radius: Math.max(b.w, b.d) * 0.56,
+                    height: b.h + 1
+                });
+            });
+
+            // 3. Spawn Curved Tropical Vice Palm Trees along Boulevards & Beach
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4423, roughness: 0.9 });
+            const frondMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.6, side: THREE.DoubleSide });
+
+            for (let i = 0; i < 55; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 22 + Math.random() * (ISLAND_RADIUS - 26);
+                const tx = Math.cos(angle) * dist;
+                const tz = Math.sin(angle) * dist;
+                // Keep roads clear
+                if (Math.abs(tx) < 12 || Math.abs(tz) < 12) continue;
+                if (isTooCloseToObstacles(tx, tz, 6)) continue;
+
+                const palmGroup = new THREE.Group();
+                // Segmented curved trunk
+                for (let s = 0; s < 5; s++) {
+                    const seg = new THREE.Mesh(
+                        new THREE.CylinderGeometry(0.36 - s * 0.04, 0.42 - s * 0.04, 1.6, 7),
+                        trunkMat
+                    );
+                    seg.position.set(s * 0.16, 0.8 + s * 1.45, 0);
+                    seg.rotation.z = -s * 0.06;
+                    seg.castShadow = true;
+                    palmGroup.add(seg);
+                }
+                // Canopy fronds
+                for (let f = 0; f < 6; f++) {
+                    const frond = new THREE.Mesh(new THREE.ConeGeometry(1.6, 3.8, 4), frondMat);
+                    frond.position.set(0.75, 7.6, 0);
+                    frond.rotation.z = Math.PI / 2.8;
+                    const pivot = new THREE.Group();
+                    pivot.rotation.y = (f * Math.PI) / 3;
+                    pivot.add(frond);
+                    palmGroup.add(pivot);
+                }
+                palmGroup.position.set(tx, 0, tz);
+                palmGroup.rotation.y = Math.random() * Math.PI * 2;
+                scene.add(palmGroup);
+
+                obstacles.push({ mesh: palmGroup, x: tx, z: tz, radius: 0.9, height: 8.0 });
+            }
+
+            // 4. Spawn 6 Drivable GTA-Style Supercars on the Boulevards
+            createSupercar(6, 4, 0, 0xff0055, 0x00f0ff);
+            createSupercar(-6, -42, Math.PI, 0x00e1ff, 0xff2a85);
+            createSupercar(48, 6, Math.PI / 2, 0xf59e0b, 0x00ffcc);
+            createSupercar(-52, -6, -Math.PI / 2, 0xa855f7, 0xfacc15);
+            createSupercar(6, 68, 0, 0x10b981, 0x38bdf8);
+            createSupercar(-6, -105, 0, 0xef4444, 0xfbbf24);
+
+            // 5. Spawn Tactical Street Cover Barriers
+            const barrierMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.7 });
+            for (let i = 0; i < 20; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 24 + Math.random() * (ISLAND_RADIUS - 42);
+                const bx = Math.cos(angle) * dist;
+                const bz = Math.sin(angle) * dist;
+                if (Math.abs(bx) < 11 || Math.abs(bz) < 11) continue;
+                if (isTooCloseToObstacles(bx, bz, 7)) continue;
+
+                const crate = new THREE.Mesh(new THREE.BoxGeometry(3.8, 2.6, 2.2), barrierMat);
+                crate.position.set(bx, 1.3, bz);
+                crate.rotation.y = Math.random() * Math.PI;
+                crate.castShadow = true;
+                crate.receiveShadow = true;
+                scene.add(crate);
+                obstacles.push({ mesh: crate, x: bx, z: bz, radius: 2.3, height: 2.6 });
+            }
+
+            // 6. Spawn Supply Loot Crates
+            for (let i = 0; i < 30; i++) {
+                spawnLootCrate();
+            }
+
+            // 7. Spawn 19 AI Syndicate Bots
+            for (let i = 0; i < TOTAL_BOTS; i++) {
+                spawnBot(i);
+            }
+        }
+
+        function isTooCloseToObstacles(x, z, minDist) {
+            if (Math.hypot(x - player.x, z - player.z) < 12) return true;
+            for (let o of obstacles) {
+                if (Math.hypot(x - o.x, z - o.z) < o.radius + minDist) return true;
+            }
+            return false;
+        }
+
+        function spawnLootCrate(customX = null, customZ = null) {
+            let lx = customX, lz = customZ;
+            if (lx === null || lz === null) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 14 + Math.random() * (ISLAND_RADIUS - 32);
+                lx = Math.cos(angle) * dist;
+                lz = Math.sin(angle) * dist;
+            }
+
+            const types = [
+                { type: 'medkit', color: 0x10b981, label: '+1 MEDKIT & +60 HP' },
+                { type: 'ammo', color: 0xf59e0b, label: '+60 RIFLE AMMO' },
+                { type: 'shield', color: 0x00e1ff, label: '+50 BALLISTIC VEST' },
+                { type: 'gloo', color: 0xff2a85, label: '+2 GLOO WALLS' }
+            ];
+            const chosen = types[Math.floor(Math.random() * types.length)];
+
+            const crateGroup = new THREE.Group();
+            const box = new THREE.Mesh(
+                new THREE.BoxGeometry(1.25, 1.25, 1.25),
+                new THREE.MeshStandardMaterial({ color: chosen.color, metalness: 0.4, roughness: 0.3 })
+            );
+            const ring = new THREE.Mesh(
+                new THREE.RingGeometry(0.95, 1.3, 20),
+                new THREE.MeshBasicMaterial({ color: chosen.color, side: THREE.DoubleSide })
+            );
+            ring.rotation.x = -Math.PI / 2;
+            ring.position.y = -0.55;
+            crateGroup.add(box, ring);
+            crateGroup.position.set(lx, 0.85, lz);
+            scene.add(crateGroup);
+
+            lootCrates.push({ mesh: crateGroup, x: lx, z: lz, type: chosen.type, label: chosen.label });
+        }
+
+        function spawnBot(index) {
+            let bx = 0, bz = 0;
+            for (let attempt = 0; attempt < 25; attempt++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 34 + Math.random() * (ISLAND_RADIUS - 44);
+                bx = Math.cos(angle) * dist;
+                bz = Math.sin(angle) * dist;
+                if (!isTooCloseToObstacles(bx, bz, 4)) break;
+            }
+
+            const botColors = [0xe11d48, 0x7c3aed, 0xd97706, 0x0284c7, 0xdc2626];
+            const charObj = createArticulatedCharacter(botColors[index % botColors.length], false);
+            charObj.group.position.set(bx, 0, bz);
+            scene.add(charObj.group);
+
+            bots.push({
+                id: index + 1,
+                name: BOT_NAMES[index % BOT_NAMES.length],
+                group: charObj.group,
+                muzzle: charObj.muzzle,
+                limbs: charObj.limbs,
+                x: bx,
+                z: bz,
+                yaw: Math.random() * Math.PI * 2,
+                hp: 145,
+                maxHp: 145,
+                speed: 7.2 + Math.random() * 1.8,
+                fireTimer: 0.5 + Math.random() * 1.2,
+                strafeDir: Math.random() > 0.5 ? 1 : -1,
+                strafeTimer: 1.5,
+                walkCycle: Math.random() * 10,
+                alive: true
+            });
+        }
+
+        function animateCharacterLimbs(limbs, speedMag, dt, isADS = false) {
+            if (!limbs) return;
+            if (speedMag > 0.4) {
+                limbs.walkCycle = (limbs.walkCycle || 0) + speedMag * dt * 1.45;
+                const swing = Math.sin(limbs.walkCycle) * 0.65;
+                limbs.leftLegPivot.rotation.x = swing;
+                limbs.rightLegPivot.rotation.x = -swing;
+                limbs.torso.position.y = 1.48 + Math.abs(Math.cos(limbs.walkCycle * 2)) * 0.05;
+            } else {
+                limbs.leftLegPivot.rotation.x *= 0.85;
+                limbs.rightLegPivot.rotation.x *= 0.85;
+                limbs.torso.position.y = 1.48;
+            }
+            limbs.rightArmPivot.rotation.x = isADS ? 0.25 : 0;
+        }
+
+        function spawnTireSmoke(x, z) {
+            const puff = new THREE.Mesh(
+                new THREE.SphereGeometry(0.45 + Math.random() * 0.35, 8, 8),
+                new THREE.MeshBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.55 })
+            );
+            puff.position.set(x + (Math.random() - 0.5) * 1.2, 0.35, z + (Math.random() - 0.5) * 1.2);
+            scene.add(puff);
+            smokeParticles.push({ mesh: puff, timer: 0.55 });
+        }
+
+        /********************************************************************
+         * 7. GLOO WALLS, VEHICLE ENTER/EXIT, SHOOTING & BALLISTICS
+         ********************************************************************/
+        function toggleVehicleEnterExit() {
+            if (!gameActive || !player.alive) return;
+
+            if (player.inVehicle) {
+                // Exit Vehicle
+                const car = player.inVehicle;
+                player.inVehicle = null;
+                player.x = car.x + Math.cos(car.yaw) * 3.4;
+                player.z = car.z - Math.sin(car.yaw) * 3.4;
+                player.group.visible = true;
+                document.getElementById('speedometer-badge').classList.add('hidden');
+                document.getElementById('jump-btn-label').innerText = 'JUMP';
+                document.getElementById('fire-btn-label').innerText = 'FIRE';
+                showLootToast("EXITED SUPERCAR");
+                sfx.playPickup();
+                return;
+            }
+
+            if (player.nearVehicle) {
+                player.inVehicle = player.nearVehicle;
+                player.isADS = false;
+                player.group.visible = false;
+                document.getElementById('speedometer-badge').classList.remove('hidden');
+                document.getElementById('jump-btn-label').innerText = 'DRIFT';
+                document.getElementById('fire-btn-label').innerText = 'BOOST';
+                showLootToast("🏎️ DRIVING VICE SUPERCAR!");
+                sfx.playPickup();
+            }
+        }
+
+        function deployGlooWall() {
+            if (!gameActive || !player.alive) return;
+            if (player.glooWalls <= 0) {
+                showLootToast("NO GLOO WALLS LEFT!");
+                return;
+            }
+
+            player.glooWalls--;
+            sfx.playGlooWall();
+            updateHUD();
+
+            const forwardX = -Math.sin(player.yaw);
+            const forwardZ = -Math.cos(player.yaw);
+            const gx = player.x + forwardX * 5.0;
+            const gz = player.z + forwardZ * 5.0;
+
+            const glooGroup = new THREE.Group();
+            const wallMat = new THREE.MeshStandardMaterial({
+                color: 0x00f0ff,
+                emissive: 0x0066ff,
+                emissiveIntensity: 0.45,
+                roughness: 0.15,
+                metalness: 0.5,
+                transparent: true,
+                opacity: 0.88
+            });
+            const mainWall = new THREE.Mesh(new THREE.BoxGeometry(5.4, 3.8, 0.75), wallMat);
+            mainWall.position.y = 1.9;
+            mainWall.castShadow = true;
+
+            const leftWing = new THREE.Mesh(new THREE.BoxGeometry(1.9, 3.7, 0.7), wallMat);
+            leftWing.position.set(-3.0, 1.85, 0.48);
+            leftWing.rotation.y = 0.45;
+
+            const rightWing = new THREE.Mesh(new THREE.BoxGeometry(1.9, 3.7, 0.7), wallMat);
+            rightWing.position.set(3.0, 1.85, 0.48);
+            rightWing.rotation.y = -0.45;
+
+            glooGroup.add(mainWall, leftWing, rightWing);
+            glooGroup.position.set(gx, 0, gz);
+            glooGroup.rotation.y = player.yaw;
+            scene.add(glooGroup);
+
+            obstacles.push({
+                mesh: glooGroup,
+                x: gx,
+                z: gz,
+                radius: 2.9,
+                height: 3.8,
+                isGloo: true,
+                hp: 260
+            });
+
+            showLootToast("🛡️ GLOO WALL DEPLOYED!");
+        }
+
+        function firePlayerWeapon() {
+            if (!gameActive || !player.alive || player.isReloading) return;
+
+            // If driving a car, Fire button acts as Nitro Boost
+            if (player.inVehicle) {
+                player.inVehicle.speed = Math.min(player.inVehicle.maxSpeed * 1.25, player.inVehicle.speed + 0.9);
+                spawnTireSmoke(player.inVehicle.x, player.inVehicle.z);
+                return;
+            }
+
+            if (player.fireCooldown > 0) return;
+
+            if (player.ammoClip <= 0) {
+                reloadWeapon();
+                return;
+            }
+
+            player.ammoClip--;
+            player.fireCooldown = 0.105;
+            player.recoilKick = player.isADS ? 0.012 : 0.024;
+            player.pitch = Math.max(-0.38, player.pitch - 0.008);
+            sfx.playShoot(true);
+            updateHUD();
+
+            const ring = document.getElementById('reticle-ring');
+            ring.style.transform = 'scale(1.38)';
+            setTimeout(() => { ring.style.transform = 'scale(1)'; }, 65);
+
+            const raycaster = new THREE.Raycaster();
+            const spreadFactor = player.isADS ? 0.005 : 0.018;
+            const spreadX = (Math.random() - 0.5) * spreadFactor;
+            const spreadY = (Math.random() - 0.5) * spreadFactor;
+            raycaster.setFromCamera(new THREE.Vector2(spreadX, spreadY), camera);
+
+            const muzzlePos = new THREE.Vector3();
+            player.muzzlePoint.getWorldPosition(muzzlePos);
+
+            // Flash dynamic muzzle light
+            muzzleLight.position.copy(muzzlePos);
+            muzzleLight.intensity = 2.8;
+            setTimeout(() => { muzzleLight.intensity = 0; }, 45);
+
+            let closestObstDist = 145;
+            let hitObst = null;
+            let obstHitPoint = null;
+
+            const obstMeshes = obstacles.map(o => o.mesh);
+            const obstHits = raycaster.intersectObjects(obstMeshes, true);
+            if (obstHits.length > 0 && obstHits[0].distance < closestObstDist) {
+                closestObstDist = obstHits[0].distance;
+                obstHitPoint = obstHits[0].point;
+                hitObst = obstacles.find(o => o.mesh === obstHits[0].object || o.mesh === obstHits[0].object.parent);
+            }
+
+            let hitBot = null;
+            let botHitDist = closestObstDist;
+            let botHitPoint = null;
+            let isHeadshot = false;
+
+            for (let b of bots) {
+                if (!b.alive) continue;
+                const hits = raycaster.intersectObject(b.group, true);
+                if (hits.length > 0 && hits[0].distance < botHitDist && hits[0].distance > 1.5) {
+                    botHitDist = hits[0].distance;
+                    botHitPoint = hits[0].point;
+                    hitBot = b;
+                    isHeadshot = (botHitPoint.y - b.group.position.y) > 2.05;
+                }
+            }
+
+            if (hitBot) {
+                const dmg = isHeadshot ? 84 : (31 + Math.floor(Math.random() * 8));
+                hitBot.hp -= dmg;
+                player.totalDamage += dmg;
+
+                createBulletTracer(muzzlePos, botHitPoint, 0xffee55);
+                sfx.playHit(isHeadshot);
+                triggerHitMarker();
+                spawnFloatingDamage(botHitPoint, dmg, isHeadshot);
+
+                if (hitBot.hp <= 0) {
+                    eliminateBot(hitBot, "YOU", true);
+                }
+            } else if (obstHitPoint) {
+                createBulletTracer(muzzlePos, obstHitPoint, 0xffaa00);
+                if (hitObst && hitObst.isGloo) {
+                    hitObst.hp -= 32;
+                    if (hitObst.hp <= 0) {
+                        scene.remove(hitObst.mesh);
+                        obstacles = obstacles.filter(o => o !== hitObst);
+                    }
+                }
+            } else {
+                const endPt = new THREE.Vector3();
+                raycaster.ray.at(125, endPt);
+                createBulletTracer(muzzlePos, endPt, 0xffcc33);
+            }
+
+            radarBlips.push({ x: player.x, z: player.z, timer: 0.6, isPlayer: true });
+        }
+
+        function createBulletTracer(startVec, endVec, hexColor = 0xffdd44) {
+            const mat = new THREE.LineBasicMaterial({ color: hexColor, transparent: true, opacity: 0.92 });
+            const geo = new THREE.BufferGeometry().setFromPoints([startVec, endVec]);
+            const line = new THREE.Line(geo, mat);
+            scene.add(line);
+            bulletTracers.push({ line, timer: 0.065 });
+        }
+
+        function triggerHitMarker() {
+            const hm = document.getElementById('hit-marker');
+            hm.classList.remove('hit-anim');
+            void hm.offsetWidth;
+            hm.classList.add('hit-anim');
+        }
+
+        function spawnFloatingDamage(worldPos, amount, isHeadshot) {
+            const container = document.getElementById('damage-container');
+            const projected = worldPos.clone().project(camera);
+            if (projected.z > 1) return;
+
+            const screenX = (projected.x * 0.5 + 0.5) * window.innerWidth;
+            const screenY = (-(projected.y * 0.5) + 0.5) * window.innerHeight;
+
+            const el = document.createElement('div');
+            el.className = `dmg-popup ${isHeadshot ? 'text-red-500 text-2xl sm:text-3xl' : 'text-amber-300 text-xl sm:text-2xl'}`;
+            el.style.left = `${screenX}px`;
+            el.style.top = `${screenY}px`;
+            el.innerText = isHeadshot ? `HEADSHOT ${amount}!` : `-${amount}`;
+            container.appendChild(el);
+
+            setTimeout(() => {
+                if (el.parentNode) el.parentNode.removeChild(el);
+            }, 780);
+        }
+
+        function reloadWeapon() {
+            if (player.isReloading || player.ammoClip === player.maxClip || player.ammoReserve <= 0) return;
+            player.isReloading = true;
+            document.getElementById('weapon-name').innerText = "RELOADING...";
+            sfx.playPickup();
+
+            setTimeout(() => {
+                const needed = player.maxClip - player.ammoClip;
+                const take = Math.min(needed, player.ammoReserve);
+                player.ammoClip += take;
+                player.ammoReserve -= take;
+                player.isReloading = false;
+                document.getElementById('weapon-name').innerText = "M4A1 - VICE OPS";
+                updateHUD();
+            }, 1050);
+        }
+
+        function useMedkit() {
+            if (!gameActive || !player.alive) return;
+            if (player.medkits <= 0) {
+                showLootToast("NO MEDKITS AVAILABLE!");
+                return;
+            }
+            if (player.hp >= player.maxHp) {
+                showLootToast("HP ALREADY FULL!");
+                return;
+            }
+            player.medkits--;
+            player.hp = Math.min(player.maxHp, player.hp + 90);
+            sfx.playPickup();
+            showLootToast("✚ HEALED +90 HP!");
+            updateHUD();
+        }
+
+        function triggerDashJump() {
+            if (!gameActive || !player.alive) return;
+            if (player.inVehicle) {
+                // Handbrake Drift in car
+                player.inVehicle.speed *= 0.92;
+                spawnTireSmoke(player.inVehicle.x, player.inVehicle.z);
+                return;
+            }
+            if (player.dashCooldown > 0) return;
+            player.dashBoostTimer = 0.45;
+            player.dashCooldown = 1.4;
+            if (player.y <= 0.05) {
+                player.vy = 8.2;
+            }
+            sfx.playPickup();
+        }
+
+        function toggleADS() {
+            if (!gameActive || !player.alive || player.inVehicle) return;
+            player.isADS = !player.isADS;
+            const ring = document.getElementById('reticle-ring');
+            ring.style.borderColor = player.isADS ? '#ff2a85' : 'rgba(255,255,255,0.85)';
+        }
+
+        /********************************************************************
+         * 8. AI BOTS LOGIC & COMBAT
+         ********************************************************************/
+        function updateBots(dt) {
+            for (let b of bots) {
+                if (!b.alive) continue;
+
+                const distFromCenter = Math.hypot(b.x, b.z);
+                const outsideZone = distFromCenter > safeZone.radius;
+                if (outsideZone) {
+                    b.hp -= 5.5 * dt;
+                    if (b.hp <= 0) {
+                        eliminateBot(b, "STORM ZONE", false);
+                        continue;
+                    }
+                }
+
+                let target = null;
+                let minDist = 62;
+
+                if (player.alive) {
+                    const dp = Math.hypot(player.x - b.x, player.z - b.z);
+                    if (dp < minDist) {
+                        minDist = dp;
+                        target = { isPlayer: true, x: player.x, z: player.z, obj: player };
+                    }
+                }
+
+                for (let other of bots) {
+                    if (other === b || !other.alive) continue;
+                    const db = Math.hypot(other.x - b.x, other.z - b.z);
+                    if (db < minDist) {
+                        minDist = db;
+                        target = { isPlayer: false, x: other.x, z: other.z, obj: other };
+                    }
+                }
+
+                let moveX = 0, moveZ = 0;
+                if (outsideZone) {
+                    const angleToCenter = Math.atan2(-b.x, -b.z);
+                    b.yaw = angleToCenter;
+                    moveX = -Math.sin(b.yaw) * b.speed;
+                    moveZ = -Math.cos(b.yaw) * b.speed;
+                } else if (target) {
+                    const dx = target.x - b.x;
+                    const dz = target.z - b.z;
+                    b.yaw = Math.atan2(-dx, -dz);
+
+                    b.strafeTimer -= dt;
+                    if (b.strafeTimer <= 0) {
+                        b.strafeDir *= -1;
+                        b.strafeTimer = 1.2 + Math.random() * 1.5;
+                    }
+
+                    const forwardX = -Math.sin(b.yaw);
+                    const forwardZ = -Math.cos(b.yaw);
+                    const rightX = Math.cos(b.yaw);
+                    const rightZ = -Math.sin(b.yaw);
+
+                    if (minDist > 22) {
+                        moveX = (forwardX * 0.8 + rightX * 0.4 * b.strafeDir) * b.speed;
+                        moveZ = (forwardZ * 0.8 + rightZ * 0.4 * b.strafeDir) * b.speed;
+                    } else {
+                        moveX = rightX * b.strafeDir * (b.speed * 0.75);
+                        moveZ = rightZ * b.strafeDir * (b.speed * 0.75);
+                    }
+
+                    b.fireTimer -= dt;
+                    if (b.fireTimer <= 0) {
+                        b.fireTimer = 0.65 + Math.random() * 0.85;
+                        botShootAt(b, target, minDist);
+                    }
+                } else {
+                    b.strafeTimer -= dt;
+                    if (b.strafeTimer <= 0) {
+                        b.yaw += (Math.random() - 0.5) * 1.8;
+                        b.strafeTimer = 2.0 + Math.random() * 2.0;
+                    }
+                    moveX = -Math.sin(b.yaw) * (b.speed * 0.65);
+                    moveZ = -Math.cos(b.yaw) * (b.speed * 0.65);
+                }
+
+                const nextPos = resolveObstacleCollisions(b.x + moveX * dt, b.z + moveZ * dt, 0.75);
+                b.x = nextPos.x;
+                b.z = nextPos.z;
+                b.group.position.set(b.x, 0, b.z);
+                b.group.rotation.y = b.yaw;
+
+                animateCharacterLimbs(b.limbs, Math.hypot(moveX, moveZ), dt, false);
+            }
+        }
+
+        function botShootAt(bot, target, dist) {
+            for (let o of obstacles) {
+                const distToObst = pointToSegmentDistance(o.x, o.z, bot.x, bot.z, target.x, target.z);
+                if (distToObst < o.radius * 0.9) {
+                    if (o.isGloo) o.hp -= 18;
+                    return;
+                }
+            }
+
+            const startVec = new THREE.Vector3(bot.x, 1.55, bot.z);
+            const endVec = new THREE.Vector3(
+                target.x + (Math.random() - 0.5) * 1.8,
+                1.4,
+                target.z + (Math.random() - 0.5) * 1.8
+            );
+            createBulletTracer(startVec, endVec, 0xff3366);
+
+            if (dist < 65) {
+                sfx.playShoot(false);
+                radarBlips.push({ x: bot.x, z: bot.z, timer: 0.65, isPlayer: false });
+            }
+
+            const hitChance = Math.max(0.16, 0.55 - dist * 0.006);
+            if (Math.random() < hitChance) {
+                const dmg = 10 + Math.floor(Math.random() * 7);
+                if (target.isPlayer) {
+                    damagePlayer(dmg, bot.name);
+                } else {
+                    target.obj.hp -= dmg * 1.35;
+                    if (target.obj.hp <= 0) {
+                        eliminateBot(target.obj, bot.name, false);
+                    }
+                }
+            }
+        }
+
+        function pointToSegmentDistance(px, pz, x1, z1, x2, z2) {
+            const A = px - x1, B = pz - z1, C = x2 - x1, D = z2 - z1;
+            const dot = A * C + B * D;
+            const lenSq = C * C + D * D;
+            let param = lenSq !== 0 ? dot / lenSq : -1;
+            let xx, zz;
+            if (param < 0) { xx = x1; zz = z1; }
+            else if (param > 1) { xx = x2; zz = z2; }
+            else { xx = x1 + param * C; zz = z1 + param * D; }
+            return Math.hypot(px - xx, pz - zz);
+        }
+
+        function eliminateBot(bot, killerName, killedByPlayer) {
+            if (!bot.alive) return;
+            bot.alive = false;
+            scene.remove(bot.group);
+            spawnLootCrate(bot.x, bot.z);
+
+            if (killedByPlayer) {
+                player.kills++;
+                showLootToast(`💀 ELIMINATED ${bot.name}!`);
+            }
+
+            pushKillFeed(killerName, bot.name, killedByPlayer);
+            updateHUD();
+
+            const remainingBots = bots.filter(b => b.alive).length;
+            if (remainingBots === 0 && player.alive) {
+                endMatch(true);
+            }
+        }
+
+        function damagePlayer(amount, attackerName) {
+            if (!player.alive || !gameActive) return;
+
+            if (player.shield > 0) {
+                const absorb = Math.min(player.shield, Math.ceil(amount * 0.65));
+                player.shield -= absorb;
+                player.hp -= (amount - absorb);
+            } else {
+                player.hp -= amount;
+            }
+
+            const vig = document.getElementById('vignette-layer');
+            vig.style.boxShadow = 'inset 0 0 90px rgba(239, 68, 68, 0.88)';
+            setTimeout(() => {
+                if (vig) vig.style.boxShadow = 'inset 0 0 55px rgba(0,0,0,0.45)';
+            }, 220);
+
+            updateHUD();
+
+            if (player.hp <= 0) {
+                player.hp = 0;
+                player.alive = false;
+                pushKillFeed(attackerName, "YOU", false);
+                endMatch(false);
+            }
+        }
+
+        /********************************************************************
+         * 9. REALISTIC LOCOMOTION, DRIFT CAR PHYSICS & SPRING-ARM CAMERA
+         ********************************************************************/
+        function resolveObstacleCollisions(x, z, entityRadius) {
+            let rx = x, rz = z;
+            const distFromOrigin = Math.hypot(rx, rz);
+            if (distFromOrigin > ISLAND_RADIUS - 2) {
+                const scale = (ISLAND_RADIUS - 2) / distFromOrigin;
+                rx *= scale;
+                rz *= scale;
+            }
+
+            for (let o of obstacles) {
+                const dx = rx - o.x;
+                const dz = rz - o.z;
+                const dist = Math.hypot(dx, dz);
+                const minDist = o.radius + entityRadius;
+                if (dist < minDist && dist > 0.0001) {
+                    const overlap = minDist - dist;
+                    rx += (dx / dist) * overlap;
+                    rz += (dz / dist) * overlap;
+                }
+            }
+            return { x: rx, z: rz };
+        }
+
+        let engineSoundTimer = 0;
+
+        function updatePlayerAndVehicles(dt) {
+            if (!player.alive) return;
+
+            if (player.fireCooldown > 0) player.fireCooldown -= dt;
+            if (player.dashCooldown > 0) player.dashCooldown -= dt;
+            if (player.dashBoostTimer > 0) player.dashBoostTimer -= dt;
+            player.recoilKick *= 0.82;
+
+            if (input.isFiring) {
+                firePlayerWeapon();
+            }
+
+            // Gather Unified Input (Virtual Joystick + WASD)
+            let inputRight = input.joyX;
+            let inputForward = -input.joyY;
+
+            if (input.keys['KeyW'] || input.keys['ArrowUp']) inputForward += 1;
+            if (input.keys['KeyS'] || input.keys['ArrowDown']) inputForward -= 1;
+            if (input.keys['KeyA'] || input.keys['ArrowLeft']) inputRight -= 1;
+            if (input.keys['KeyD'] || input.keys['ArrowRight']) inputRight += 1;
+
+            const mag = Math.hypot(inputRight, inputForward);
+            if (mag > 1) {
+                inputRight /= mag;
+                inputForward /= mag;
+            }
+
+            // =============== A. DRIVING GTA SUPERCAR MODE ===============
+            if (player.inVehicle) {
+                const car = player.inVehicle;
+                const accel = 28.0;
+                const handbrake = input.keys['Space'];
+
+                if (Math.abs(inputForward) > 0.05) {
+                    car.speed += inputForward * accel * dt;
+                } else {
+                    car.speed *= Math.pow(0.28, dt);
+                }
+                car.speed = Math.max(-16, Math.min(car.maxSpeed, car.speed));
+
+                if (Math.abs(car.speed) > 0.6) {
+                    const turnRate = (handbrake ? 3.2 : 2.1) * (car.speed > 0 ? 1 : -1);
+                    car.yaw -= inputRight * turnRate * dt;
+
+                    if (handbrake && Math.abs(car.speed) > 12) {
+                        spawnTireSmoke(car.x, car.z);
+                    }
+                }
+
+                const forwardX = -Math.sin(car.yaw);
+                const forwardZ = -Math.cos(car.yaw);
+                const nextCarPos = resolveObstacleCollisions(
+                    car.x + forwardX * car.speed * dt,
+                    car.z + forwardZ * car.speed * dt,
+                    2.2
+                );
+                car.x = nextCarPos.x;
+                car.z = nextCarPos.z;
+                car.mesh.position.set(car.x, 0, car.z);
+                car.mesh.rotation.y = car.yaw;
+
+                // Spin wheels & steer front tires
+                car.wheels.forEach((w, idx) => {
+                    w.children[0].rotation.x -= car.speed * dt * 0.8;
+                    if (idx < 2) w.rotation.y = -inputRight * 0.42;
+                });
+
+                // Sync player coordinates to car
+                player.x = car.x;
+                player.z = car.z;
+                player.yaw = car.yaw;
+
+                // Roadkill / Ram AI Bots at high speed
+                if (Math.abs(car.speed) > 9) {
+                    for (let b of bots) {
+                        if (!b.alive) continue;
+                        if (Math.hypot(b.x - car.x, b.z - car.z) < 3.1) {
+                            const ramDmg = Math.round(Math.abs(car.speed) * 4.5);
+                            b.hp -= ramDmg;
+                            player.totalDamage += ramDmg;
+                            sfx.playHit(true);
+                            triggerHitMarker();
+                            spawnFloatingDamage(new THREE.Vector3(b.x, 2.2, b.z), ramDmg, true);
+                            if (b.hp <= 0) {
+                                eliminateBot(b, "SUPERCAR", true);
+                            }
+                        }
+                    }
+                }
+
+                // Engine Synth Audio & Speedometer HUD
+                engineSoundTimer -= dt;
+                if (engineSoundTimer <= 0 && Math.abs(car.speed) > 1.5) {
+                    engineSoundTimer = 0.08;
+                    sfx.playEnginePurr(car.speed / car.maxSpeed);
+                }
+                const mph = Math.round(Math.abs(car.speed) * 3.4);
+                document.getElementById('speedometer-badge').innerText = `${mph} MPH`;
+
+                // Chase Camera behind Supercar
+                const chaseDist = 9.5 + (Math.abs(car.speed) / car.maxSpeed) * 2.2;
+                const camX = car.x + Math.sin(car.yaw) * chaseDist;
+                const camZ = car.z + Math.cos(car.yaw) * chaseDist;
+                camera.position.lerp(new THREE.Vector3(camX, 3.8, camZ), 0.18);
+                camera.lookAt(car.x - Math.sin(car.yaw) * 10, 1.4, car.z - Math.cos(car.yaw) * 10);
+                camera.fov += (70 - camera.fov) * 0.15;
+                camera.updateProjectionMatrix();
+
+            } else {
+                // =============== B. ON-FOOT GTA/FREE FIRE LOCOMOTION ===============
+                const isSprinting = (inputForward > 0.75 || input.keys['ShiftLeft'] || player.dashBoostTimer > 0) && !player.isADS;
+                const topSpeed = player.dashBoostTimer > 0 ? 19.5 : (player.isADS ? 6.5 : (isSprinting ? 13.8 : 10.2));
+
+                const forwardX = -Math.sin(player.yaw);
+                const forwardZ = -Math.cos(player.yaw);
+                const rightX = Math.cos(player.yaw);
+                const rightZ = -Math.sin(player.yaw);
+
+                const targetVx = (forwardX * inputForward + rightX * inputRight) * topSpeed;
+                const targetVz = (forwardZ * inputForward + rightZ * inputRight) * topSpeed;
+
+                // Smooth inertia acceleration / deceleration
+                const accelLerp = Math.min(1, dt * 11.5);
+                player.vx += (targetVx - player.vx) * accelLerp;
+                player.vz += (targetVz - player.vz) * accelLerp;
+
+                const resolved = resolveObstacleCollisions(
+                    player.x + player.vx * dt,
+                    player.z + player.vz * dt,
+                    0.78
+                );
+                player.x = resolved.x;
+                player.z = resolved.z;
+
+                // Jump Gravity
+                if (player.y > 0 || player.vy !== 0) {
+                    player.y += player.vy * dt;
+                    player.vy -= 22.5 * dt;
+                    if (player.y <= 0) {
+                        player.y = 0;
+                        player.vy = 0;
+                    }
+                }
+
+                const currentSpeed = Math.hypot(player.vx, player.vz);
+                animateCharacterLimbs(player.limbs, currentSpeed, dt, player.isADS);
+
+                player.group.position.set(player.x, player.y, player.z);
+                player.group.rotation.y = player.yaw;
+
+                // Over-the-shoulder Spring-Arm Camera with ADS Zoom
+                const targetFov = player.isADS ? 40 : (isSprinting ? 68 : 60);
+                camera.fov += (targetFov - camera.fov) * 0.18;
+                camera.updateProjectionMatrix();
+
+                const camDist = player.isADS ? 3.2 : 5.8;
+                const shoulderOffset = player.isADS ? 0.88 : 1.15;
+                const headBob = currentSpeed > 1.0 ? Math.sin( (player.limbs.walkCycle || 0) * 2 ) * 0.06 : 0;
+                const camHeight = 2.85 + Math.sin(player.pitch) * 2.1 + headBob;
+
+                const behindX = Math.sin(player.yaw) * camDist + Math.cos(player.yaw) * shoulderOffset;
+                const behindZ = Math.cos(player.yaw) * camDist - Math.sin(player.yaw) * shoulderOffset;
+
+                camera.position.set(
+                    player.x + behindX,
+                    player.y + camHeight,
+                    player.z + behindZ
+                );
+
+                const lookTarget = new THREE.Vector3(
+                    player.x - Math.sin(player.yaw) * 26 + Math.cos(player.yaw) * 0.4,
+                    player.y + 1.82 - Math.sin(player.pitch - player.recoilKick) * 15,
+                    player.z - Math.cos(player.yaw) * 26 - Math.sin(player.yaw) * 0.4
+                );
+                camera.lookAt(lookTarget);
+            }
+
+            // Check Proximity to Parked Supercars for "DRIVE SUPERCAR" Prompt
+            let closestCar = null;
+            let minCarDist = 5.2;
+            for (let v of vehicles) {
+                const d = Math.hypot(player.x - v.x, player.z - v.z);
+                if (d < minCarDist) {
+                    minCarDist = d;
+                    closestCar = v;
+                }
+            }
+            player.nearVehicle = closestCar;
+            const promptBtn = document.getElementById('btn-vehicle-prompt');
+            const promptTxt = document.getElementById('vehicle-prompt-text');
+
+            if (player.inVehicle) {
+                promptBtn.classList.remove('hidden');
+                promptBtn.classList.add('flex');
+                promptTxt.innerText = "EXIT SUPERCAR (F)";
+            } else if (player.nearVehicle) {
+                promptBtn.classList.remove('hidden');
+                promptBtn.classList.add('flex');
+                promptTxt.innerText = "DRIVE SUPERCAR (F)";
+            } else {
+                promptBtn.classList.add('hidden');
+                promptBtn.classList.remove('flex');
+            }
+
+            // Check Loot Crate Pickups
+            for (let i = lootCrates.length - 1; i >= 0; i--) {
+                const crate = lootCrates[i];
+                crate.mesh.rotation.y += 1.8 * dt;
+                if (Math.hypot(player.x - crate.x, player.z - crate.z) < 2.8) {
+                    applyLootCrate(crate);
+                    scene.remove(crate.mesh);
+                    lootCrates.splice(i, 1);
+                }
+            }
+        }
+
+        function applyLootCrate(crate) {
+            sfx.playPickup();
+            if (crate.type === 'medkit') {
+                player.medkits++;
+                player.hp = Math.min(player.maxHp, player.hp + 60);
+            } else if (crate.type === 'ammo') {
+                player.ammoReserve += 60;
+            } else if (crate.type === 'shield') {
+                player.shield = Math.min(player.maxShield, player.shield + 50);
+            } else if (crate.type === 'gloo') {
+                player.glooWalls += 2;
+            }
+            showLootToast(crate.label);
+            updateHUD();
+        }
+
+        function updateSafeZone(dt) {
+            const timerEl = document.getElementById('zone-timer-text');
+
+            if (!safeZone.shrinking) {
+                safeZone.shrinkTimer -= dt;
+                if (safeZone.shrinkTimer <= 0) {
+                    safeZone.shrinking = true;
+                    safeZone.targetRadius = Math.max(safeZone.minRadius, safeZone.radius * 0.62);
+                } else {
+                    timerEl.innerText = `STORM SHRINKS IN ${Math.ceil(safeZone.shrinkTimer)}s`;
+                }
+            } else {
+                timerEl.innerText = `⚠️ VICE STORM SHRINKING!`;
+                safeZone.radius -= 4.5 * dt;
+                if (safeZone.radius <= safeZone.targetRadius) {
+                    safeZone.radius = safeZone.targetRadius;
+                    safeZone.shrinking = false;
+                    safeZone.shrinkTimer = 18;
+                    safeZone.phase++;
+                }
+                safeZone.mesh.scale.set(safeZone.radius, 1, safeZone.radius);
+            }
+
+            const playerDist = Math.hypot(player.x, player.z);
+            const alertEl = document.getElementById('outside-zone-alert');
+            const vigEl = document.getElementById('vignette-layer');
+
+            if (playerDist > safeZone.radius && player.alive) {
+                alertEl.classList.remove('hidden');
+                vigEl.classList.add('zone-warning-pulse');
+                player.hp -= (4.5 + safeZone.phase * 1.5) * dt;
+                updateHUD();
+                if (player.hp <= 0) {
+                    player.hp = 0;
+                    player.alive = false;
+                    endMatch(false);
+                }
+            } else {
+                alertEl.classList.add('hidden');
+                vigEl.classList.remove('zone-warning-pulse');
+            }
+        }
+
+        /********************************************************************
+         * 10. HUD, KILL FEED & GTA-STYLE GPS RADAR MINIMAP
+         ********************************************************************/
+        function updateHUD() {
+            const aliveBots = bots.filter(b => b.alive).length;
+            const totalAlive = aliveBots + (player.alive ? 1 : 0);
+
+            document.getElementById('alive-count').innerText = totalAlive;
+            document.getElementById('kill-count').innerText = player.kills;
+
+            document.getElementById('ammo-clip').innerText = player.ammoClip;
+            document.getElementById('ammo-reserve').innerText = player.ammoReserve;
+            document.getElementById('medkit-count').innerText = player.medkits;
+            document.getElementById('gloo-count').innerText = player.glooWalls;
+
+            const hpPct = Math.max(0, (player.hp / player.maxHp) * 100);
+            const shPct = Math.max(0, (player.shield / player.maxShield) * 100);
+
+            document.getElementById('hp-bar').style.width = `${hpPct}%`;
+            document.getElementById('hp-val').innerText = Math.ceil(player.hp);
+            document.getElementById('shield-bar').style.width = `${shPct}%`;
+            document.getElementById('shield-val').innerText = Math.ceil(player.shield);
+        }
+
+        let toastTimeout = null;
+        function showLootToast(msg) {
+            const el = document.getElementById('loot-toast');
+            el.innerText = msg;
+            el.style.opacity = '1';
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                el.style.opacity = '0';
+            }, 1700);
+        }
+
+        function pushKillFeed(killer, victim, highlight) {
+            const feed = document.getElementById('kill-feed');
+            const item = document.createElement('div');
+            item.className = `px-2.5 py-0.5 rounded text-[11px] font-bold tracking-wide shadow ${
+                highlight ? 'vice-grad text-white' : 'bg-slate-900/85 text-slate-200 border border-white/10'
+            }`;
+            item.innerHTML = `<span>${killer}</span> <span class="text-amber-300">︻デ═一</span> <span>${victim}</span>`;
+            feed.prepend(item);
+
+            while (feed.children.length > 3) {
+                feed.removeChild(feed.lastChild);
+            }
+            setTimeout(() => {
+                if (item.parentNode) item.parentNode.removeChild(item);
+            }, 3500);
+        }
+
+        function renderMinimap(dt) {
+            const canvas = document.getElementById('minimap-canvas');
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width, h = canvas.height;
+            const cx = w / 2, cy = h / 2;
+            const scale = (w * 0.45) / ISLAND_RADIUS;
+
+            ctx.clearRect(0, 0, w, h);
+
+            ctx.fillStyle = '#072a47';
+            ctx.fillRect(0, 0, w, h);
+
+            // Vice Island Turf
+            ctx.beginPath();
+            ctx.arc(cx, cy, ISLAND_RADIUS * scale, 0, Math.PI * 2);
+            ctx.fillStyle = '#1e3a29';
+            ctx.fill();
+            ctx.lineWidth = 2.2;
+            ctx.strokeStyle = '#ebd197';
+            ctx.stroke();
+
+            // Boulevards
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 3.5;
+            ctx.beginPath();
+            ctx.moveTo(cx - ISLAND_RADIUS * 0.9 * scale, cy);
+            ctx.lineTo(cx + ISLAND_RADIUS * 0.9 * scale, cy);
+            ctx.moveTo(cx, cy - ISLAND_RADIUS * 0.9 * scale);
+            ctx.lineTo(cx, cy + ISLAND_RADIUS * 0.9 * scale);
+            ctx.stroke();
+
+            // Safe Zone Circle
+            ctx.beginPath();
+            ctx.arc(cx, cy, safeZone.radius * scale, 0, Math.PI * 2);
+            ctx.strokeStyle = '#ff2a85';
+            ctx.lineWidth = 1.8;
+            ctx.stroke();
+
+            // Draw Parked Supercars (Cyan squares)
+            ctx.fillStyle = '#00f0ff';
+            for (let v of vehicles) {
+                ctx.fillRect(cx + v.x * scale - 2, cy + v.z * scale - 2, 4, 4);
+            }
+
+            // Draw Enemy Bots (Red dots)
+            for (let b of bots) {
+                if (!b.alive) continue;
+                ctx.beginPath();
+                ctx.arc(cx + b.x * scale, cy + b.z * scale, 2.2, 0, Math.PI * 2);
+                ctx.fillStyle = '#f43f5e';
+                ctx.fill();
+            }
+
+            // Gunfire Radar Blips
+            for (let i = radarBlips.length - 1; i >= 0; i--) {
+                const blip = radarBlips[i];
+                blip.timer -= dt;
+                if (blip.timer <= 0) {
+                    radarBlips.splice(i, 1);
+                    continue;
+                }
+                ctx.beginPath();
+                ctx.arc(cx + blip.x * scale, cy + blip.z * scale, (1 - blip.timer) * 9, 0, Math.PI * 2);
+                ctx.strokeStyle = blip.isPlayer ? '#fbbf24' : '#fb7185';
+                ctx.lineWidth = 1.2;
+                ctx.stroke();
+            }
+
+            // Player GPS Arrow
+            const px = cx + player.x * scale;
+            const pz = cy + player.z * scale;
+            ctx.save();
+            ctx.translate(px, pz);
+            ctx.rotate(-player.yaw);
+            ctx.beginPath();
+            ctx.moveTo(0, -5.8);
+            ctx.lineTo(4.2, 4.5);
+            ctx.lineTo(0, 2.5);
+            ctx.lineTo(-4.2, 4.5);
+            ctx.closePath();
+            ctx.fillStyle = '#fbbf24';
+            ctx.fill();
+            ctx.restore();
+        }
+
+        /********************************************************************
+         * 11. MOBILE TOUCH & DESKTOP CONTROLS
+         ********************************************************************/
+        function setupControls() {
+            const joyZone = document.getElementById('joystick-zone');
+            const joyKnob = document.getElementById('joystick-knob');
+            const maxJoyRadius = 42;
+
+            joyZone.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                sfx.init();
+                const touch = e.changedTouches[0];
+                input.joyTouchId = touch.identifier;
+                const rect = joyZone.getBoundingClientRect();
+                input.joyOriginX = rect.left + rect.width / 2;
+                input.joyOriginY = rect.top + rect.height / 2;
+                updateJoystickPosition(touch.clientX, touch.clientY);
+            }, { passive: false });
+
+            joyZone.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === input.joyTouchId) {
+                        updateJoystickPosition(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+                    }
+                }
+            }, { passive: false });
+
+            const resetJoystick = (e) => {
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === input.joyTouchId) {
+                        input.joyTouchId = null;
+                        input.joyX = 0;
+                        input.joyY = 0;
+                        joyKnob.style.transform = `translate(0px, 0px)`;
+                    }
+                }
+            };
+            joyZone.addEventListener('touchend', resetJoystick);
+            joyZone.addEventListener('touchcancel', resetJoystick);
+
+            function updateJoystickPosition(clientX, clientY) {
+                let dx = clientX - input.joyOriginX;
+                let dy = clientY - input.joyOriginY;
+                const dist = Math.hypot(dx, dy);
+                if (dist > maxJoyRadius) {
+                    dx = (dx / dist) * maxJoyRadius;
+                    dy = (dy / dist) * maxJoyRadius;
+                }
+                joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+                input.joyX = dx / maxJoyRadius;
+                input.joyY = dy / maxJoyRadius;
+            }
+
+            // Right Touch Aim Pad
+            const aimZone = document.getElementById('aim-touch-zone');
+            aimZone.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                sfx.init();
+                const touch = e.changedTouches[0];
+                input.aimTouchId = touch.identifier;
+                input.lastTouchX = touch.clientX;
+                input.lastTouchY = touch.clientY;
+            }, { passive: false });
+
+            aimZone.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    const t = e.changedTouches[i];
+                    if (t.identifier === input.aimTouchId) {
+                        const dx = t.clientX - input.lastTouchX;
+                        const dy = t.clientY - input.lastTouchY;
+                        input.lastTouchX = t.clientX;
+                        input.lastTouchY = t.clientY;
+                        const sens = player.isADS ? 0.0038 : 0.0065;
+                        player.yaw -= dx * sens;
+                        player.pitch = Math.max(-0.35, Math.min(0.45, player.pitch + dy * (sens * 0.75)));
+                    }
+                }
+            }, { passive: false });
+
+            const endAimTouch = (e) => {
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === input.aimTouchId) {
+                        input.aimTouchId = null;
+                    }
+                }
+            };
+            aimZone.addEventListener('touchend', endAimTouch);
+            aimZone.addEventListener('touchcancel', endAimTouch);
+
+            // Tactical Buttons
+            const btnFire = document.getElementById('btn-fire');
+            btnFire.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                sfx.init();
+                input.isFiring = true;
+                btnFire.classList.add('active-press');
+                firePlayerWeapon();
+            }, { passive: false });
+            btnFire.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                input.isFiring = false;
+                btnFire.classList.remove('active-press');
+            });
+            btnFire.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+                sfx.init();
+                input.isFiring = true;
+                firePlayerWeapon();
+            });
+            window.addEventListener('mouseup', () => {
+                input.isFiring = false;
+                input.mouseDragging = false;
+            });
+
+            // Scope ADS Button
+            const btnAds = document.getElementById('btn-ads');
+            btnAds.addEventListener('touchstart', (e) => { e.preventDefault(); toggleADS(); }, { passive: false });
+            btnAds.addEventListener('click', (e) => { e.stopPropagation(); toggleADS(); });
+
+            // Gloo Wall Button
+            const btnGloo = document.getElementById('btn-gloo');
+            btnGloo.addEventListener('touchstart', (e) => { e.preventDefault(); deployGlooWall(); }, { passive: false });
+            btnGloo.addEventListener('click', (e) => { e.stopPropagation(); deployGlooWall(); });
+
+            // Medkit Button
+            const btnMedkit = document.getElementById('btn-medkit');
+            btnMedkit.addEventListener('touchstart', (e) => { e.preventDefault(); useMedkit(); }, { passive: false });
+            btnMedkit.addEventListener('click', (e) => { e.stopPropagation(); useMedkit(); });
+
+            // Jump / Drift Button
+            const btnJump = document.getElementById('btn-jump');
+            btnJump.addEventListener('touchstart', (e) => { e.preventDefault(); triggerDashJump(); }, { passive: false });
+            btnJump.addEventListener('click', (e) => { e.stopPropagation(); triggerDashJump(); });
+
+            // Vehicle Enter/Exit Prompt Button
+            const btnVeh = document.getElementById('btn-vehicle-prompt');
+            btnVeh.addEventListener('touchstart', (e) => { e.preventDefault(); toggleVehicleEnterExit(); }, { passive: false });
+            btnVeh.addEventListener('click', (e) => { e.stopPropagation(); toggleVehicleEnterExit(); });
+
+            // Reload Button
+            const btnReload = document.getElementById('btn-reload');
+            btnReload.addEventListener('touchstart', (e) => { e.preventDefault(); reloadWeapon(); }, { passive: false });
+            btnReload.addEventListener('click', (e) => { e.stopPropagation(); reloadWeapon(); });
+
+            // Time of Day Lighting Button
+            document.getElementById('btn-tod-toggle').addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleTimeOfDay();
+            });
+
+            // Audio Mute Button
+            document.getElementById('btn-audio-toggle').addEventListener('click', (e) => {
+                e.stopPropagation();
+                sfx.muted = !sfx.muted;
+                document.getElementById('svg-sound-on').classList.toggle('hidden', sfx.muted);
+                document.getElementById('svg-sound-off').classList.toggle('hidden', !sfx.muted);
+            });
+
+            // Desktop Mouse Controls
+            window.addEventListener('contextmenu', (e) => e.preventDefault());
+            window.addEventListener('mousedown', (e) => {
+                if (!gameActive) return;
+                if (e.target.closest('button') || e.target.closest('#btn-reload')) return;
+                sfx.init();
+                if (e.button === 2) {
+                    toggleADS();
+                    return;
+                }
+                input.mouseDragging = true;
+                input.lastMouseX = e.clientX;
+                input.lastMouseY = e.clientY;
+                if (e.button === 0) {
+                    input.isFiring = true;
+                    firePlayerWeapon();
+                }
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!gameActive) return;
+                if (input.mouseDragging || document.pointerLockElement) {
+                    const dx = e.movementX !== undefined && document.pointerLockElement
+                        ? e.movementX
+                        : (e.clientX - input.lastMouseX);
+                    const dy = e.movementY !== undefined && document.pointerLockElement
+                        ? e.movementY
+                        : (e.clientY - input.lastMouseY);
+                    input.lastMouseX = e.clientX;
+                    input.lastMouseY = e.clientY;
+                    const sens = player.isADS ? 0.0032 : 0.0055;
+                    player.yaw -= dx * sens;
+                    player.pitch = Math.max(-0.35, Math.min(0.45, player.pitch + dy * (sens * 0.75)));
+                }
+            });
+
+            // Keyboard Shortcuts
+            window.addEventListener('keydown', (e) => {
+                input.keys[e.code] = true;
+                if (!gameActive) return;
+                if (e.code === 'KeyG' || e.code === 'KeyE') deployGlooWall();
+                if (e.code === 'KeyF') toggleVehicleEnterExit();
+                if (e.code === 'KeyV') toggleADS();
+                if (e.code === 'KeyH') useMedkit();
+                if (e.code === 'KeyR') reloadWeapon();
+                if (e.code === 'Space') triggerDashJump();
+            });
+            window.addEventListener('keyup', (e) => {
+                input.keys[e.code] = false;
+            });
+        }
+
+        /********************************************************************
+         * 12. MATCH LIFECYCLE & MAIN RENDER LOOP
+         ********************************************************************/
+        function startMatch() {
+            sfx.init();
+
+            player.hp = 200;
+            player.shield = 75;
+            player.ammoClip = 30;
+            player.ammoReserve = 150;
+            player.medkits = 2;
+            player.glooWalls = 3;
+            player.kills = 0;
+            player.totalDamage = 0;
+            player.alive = true;
+            player.isReloading = false;
+            player.isADS = false;
+            player.inVehicle = null;
+
+            safeZone.radius = 185;
+            safeZone.targetRadius = 185;
+            safeZone.shrinkTimer = 22;
+            safeZone.phase = 1;
+            safeZone.shrinking = false;
+            safeZone.mesh.scale.set(safeZone.radius, 1, safeZone.radius);
+
+            populateIslandArena();
+            updateHUD();
+
+            document.getElementById('lobby-modal').classList.add('hidden');
+            document.getElementById('gameover-modal').classList.add('hidden');
+            document.getElementById('gameover-modal').classList.remove('flex');
+            document.getElementById('hud-layer').classList.remove('hidden');
+            document.getElementById('hud-layer').classList.add('flex');
+            document.getElementById('aim-touch-zone').classList.remove('hidden');
+
+            gameActive = true;
+            clock.getDelta();
+        }
+
+        function endMatch(isVictory) {
+            gameActive = false;
+            input.isFiring = false;
+            sfx.playBooyah(isVictory);
+
+            const aliveBots = bots.filter(b => b.alive).length;
+            const rank = isVictory ? 1 : aliveBots + 1;
+
+            const modal = document.getElementById('gameover-modal');
+            const badge = document.getElementById('result-badge');
+            const title = document.getElementById('result-title');
+            const sub = document.getElementById('result-subtitle');
+
+            if (isVictory) {
+                badge.innerText = "🏆 #1 VICE BEACH CHAMPION";
+                badge.className = "inline-block px-4 py-1 rounded-full text-xs font-black tracking-widest uppercase mb-2 vice-grad text-white";
+                title.innerText = "BOOYAH!";
+                title.className = "text-5xl sm:text-6xl font-display text-amber-400 tracking-wider drop-shadow-lg";
+                sub.innerText = "YOU RULED THE STREETS OF VICE BEACH AND CONQUERED ALL RIVALS!";
+            } else {
+                badge.innerText = "WASTED / ELIMINATED";
+                badge.className = "inline-block px-4 py-1 rounded-full text-xs font-black tracking-widest uppercase mb-2 bg-red-600 text-white";
+                title.innerText = `#${rank} PLACE`;
+                title.className = "text-5xl sm:text-6xl font-display text-red-500 tracking-wider drop-shadow-lg";
+                sub.innerText = "GRAB A SUPERCAR OR DEPLOY GLOO WALLS FOR INSTANT COVER NEXT DROP!";
+            }
+
+            document.getElementById('stat-rank').innerText = `#${rank}/20`;
+            document.getElementById('stat-kills').innerText = player.kills;
+            document.getElementById('stat-damage').innerText = player.totalDamage;
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function gameLoop() {
+            requestAnimationFrame(gameLoop);
+
+            const dt = Math.min(clock.getDelta(), 0.1);
+            const elapsed = performance.now() * 0.001;
+
+            // Subtle Ocean Wave Shimmer
+            if (oceanMesh) {
+                oceanMesh.position.y = -1.15 + Math.sin(elapsed * 2.2) * 0.12;
+            }
+
+            // Fade out active bullet tracers
+            for (let i = bulletTracers.length - 1; i >= 0; i--) {
+                bulletTracers[i].timer -= dt;
+                if (bulletTracers[i].timer <= 0) {
+                    scene.remove(bulletTracers[i].line);
+                    bulletTracers.splice(i, 1);
+                }
+            }
+
+            // Update Tire Drift Smoke Particles
+            for (let i = smokeParticles.length - 1; i >= 0; i--) {
+                const p = smokeParticles[i];
+                p.timer -= dt;
+                p.mesh.position.y += 1.4 * dt;
+                p.mesh.scale.multiplyScalar(1.03);
+                p.mesh.material.opacity = p.timer;
+                if (p.timer <= 0) {
+                    scene.remove(p.mesh);
+                    smokeParticles.splice(i, 1);
+                }
+            }
+
+            if (gameActive) {
+                updatePlayerAndVehicles(dt);
+                updateBots(dt);
+                updateSafeZone(dt);
+                renderMinimap(dt);
+            } else if (player.group) {
+                // Cinematic GTA 6 Vice City Helicopter Orbit Camera in Lobby
+                const t = elapsed * 0.25;
+                camera.position.set(Math.sin(t) * 34, 15, Math.cos(t) * 34);
+                camera.lookAt(0, 4, 0);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function () {
+            initThreeScene();
+            populateIslandArena();
+            setupControls();
+
+            document.getElementById('btn-start-match').addEventListener('click', startMatch);
+            document.getElementById('btn-play-again').addEventListener('click', startMatch);
+
+            gameLoop();
+        };
+    </script>
+</body>
+</html>
